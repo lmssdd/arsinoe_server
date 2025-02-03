@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+
+{% block title %}Simulation - ARSINOE{% endblock %}
+
+{% block content %}
+  <h1 class="title">Simulation</h1>
+  
+  <form id="uploadForm">
+    <div class="field">
+      <label class="label">Upload File</label>
+      <div class="control">
+        <input type="file" name="file" id="fileInput" class="input" required>
+      </div>
+      <p class="help">
+        <a href="/static/files/Ussana_ERA5_Land_1950_2023.txt" download>Download an example file</a>
+      </p>
+    </div>
+
+    <div class="field">
+      <label class="label">Select site</label>
+      <div class="control">
+        <label class="radio">
+          <input type="radio" name="site" value="Ussana" checked>
+          Ussana
+        </label>
+        <label class="radio">
+          <input type="radio" name="site" value="Benatzu">
+          Benatzu
+        </label>
+      </div>
+    </div>
+
+    <div class="control">
+      <button class="button is-primary" type="submit">Submit</button>
+    </div>
+  </form>
+
+  <div id="loading">
+    <div class="spinner"></div>
+    <p>Please wait, calculations are in progress...</p>
+  </div>
+
+  <div id="plot" class="mt-5"></div>
+
+  <script>
+    document.getElementById('uploadForm').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      document.getElementById('loading').style.display = 'block';
+
+      const fileInput = document.getElementById('fileInput');
+      const formData = new FormData();
+      formData.append('file', fileInput.files[0]);
+
+      const site = document.querySelector('input[name="site"]:checked').value;
+      formData.append('site', site);
+
+      try {
+        const response = await fetch('/simulation', {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (!response.ok) throw new Error(`Server error: ${response.status}`);
+
+        const plotData = await response.json();
+        Plotly.newPlot('plot', plotData.data, plotData.layout);
+      } catch (error) {
+        console.error('Error:', error);
+        alert('An error occurred. Please try again.');
+      } finally {
+        document.getElementById('loading').style.display = 'none';
+      }
+    });
+  </script>
+{% endblock %}

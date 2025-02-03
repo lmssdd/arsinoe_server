@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+
+{% block title %}Home - ARSINOE{% endblock %}
+
+{% block content %}
+  <div class="tabs is-centered is-boxed">
+    <ul>
+      <li class="is-active"><a>Meteograms</a></li>
+      <li><a>NDVI</a></li>
+      <li><a>History</a></li>
+    </ul>
+  </div>
+
+  <div class="tab-content">
+    <div class="image-container">
+      <div id="Forecast"></div>
+      <p class="caption">
+        Meteograms provide a visual representation of weather forecasts over time, helping you anticipate potential changes in temperature, precipitation, and wind speed that affect soil water availability in the near future.
+      </p>
+    </div>
+  </div>
+
+  <div class="tab-content is-hidden">
+    <div id="map-content">
+      <div id="NDVI" class="map-container"></div>
+      <p class="caption">
+        NDVI map provides a visual representation of vegetation health, identifying areas that may require additional irrigation.
+      </p>
+    </div>
+  </div>
+
+  <div class="tab-content is-hidden">
+    <div class="plot-container">
+      <div id="Precipitation"></div>
+      <p class="caption">
+        NDVI time series data allows you to monitor changes in NDVI over time in the studied area, helping you assess the irrigation needs.
+        Modeled and measured moisture content of soil at various depths provides insights into root zone health and irrigation needs.
+      </p>
+    </div>
+  </div>
+
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      const tabs = document.querySelectorAll(".tabs li");
+      const tabContents = document.querySelectorAll(".tab-content");
+      const tabContainer = document.querySelector(".tabs");
+
+      // Initially hide tabs and content until fully loaded
+      tabContainer.style.visibility = "hidden";
+      tabContents.forEach(tc => tc.style.visibility = "hidden");
+
+      function showContent() {
+          tabContainer.style.visibility = "visible";
+          tabContents.forEach(tc => tc.style.visibility = "visible");
+      }
+
+      function loadAllTabs() {
+        Promise.all([loadForecastPlot(), loadNDVIPlot(), loadPrecPlot()])
+          .then(() => {
+            showContent(); // Show everything only when all plots are loaded
+          })
+          .catch(error => console.error("Error loading content:", error));
+      }
+
+      tabs.forEach((tab, index) => {
+        tab.addEventListener("click", () => {
+          tabs.forEach(t => t.classList.remove("is-active"));
+          tabContents.forEach(content => content.classList.add("is-hidden"));
+
+          tab.classList.add("is-active");
+          tabContents[index].classList.remove("is-hidden");
+
+          if (index === 2) {
+            Plotly.relayout("Precipitation", { autosize: true });
+          }
+        });
+      });
+
+      function loadForecastPlot() {
+        return fetch("/gfs_forecast/39.415/9.1")
+          .then(response => response.json())
+          .then(plotlyData => {
+            Plotly.newPlot("Forecast", plotlyData.data, plotlyData.layout);
+          });
+      }
+
+      function loadNDVIPlot() {
+        return fetch("/ndvi_map")
+          .then(response => response.text())
+          .then(html => {
+            document.getElementById("NDVI").innerHTML = html;
+          });
+      }
+
+      function loadPrecPlot() {
+        return fetch("/prec_plot/Ussana")
+          .then(response => response.json())
+          .then(plotlyData => {
+            Plotly.newPlot("Precipitation", plotlyData.data, plotlyData.layout);
+          });
+      }
+
+      loadAllTabs();
+    });
+  </script>
+{% endblock %}

@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}ARSINOE Data Server{% endblock %}</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@1.0.2/css/bulma.min.css">
+  <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+  <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+  
+  <style>
+    /* Styling for plot container */
+    .plot-container {
+      text-align: center;
+      width: 100%;
+      margin: 0 auto;
+    }
+    #plot {
+      width: 100%;
+      height: 500px;
+    }
+
+    /* Hero Section Background */
+    .hero.is-primary {
+      background-image: url("https://arsinoe-project.eu/securstorage/2022/02/cs9-2.jpg");
+      background-size: cover;
+      background-position: center center;
+      background-repeat: no-repeat;
+      min-height: 40vh;
+    }
+
+    /* Hero Content Styling */
+    .hero-body {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      color: white;
+    }
+
+    /* Adjust Navbar Content */
+    .navbar .navbar-item img {
+      max-height: 3rem;
+    }
+
+    /* Loading Spinner */
+    #loading {
+      display: none;
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      text-align: center;
+      z-index: 1000;
+    }
+    #loading .spinner {
+      border: 4px solid rgba(0, 0, 0, 0.1);
+      border-top: 4px solid #00d1b2;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+  </style>
+
+</head>
+
+<body>
+
+  {% include "navbar.html" %}
+
+  <section class="hero is-primary">
+    <div class="hero-body">
+      <div class="container">
+        <h1 class="title">
+          CRS4 - Sardinian ARSINOE Test Case Archive Data
+        </h1>
+        <p class="subtitle">
+          Service platform for ARSINOE data.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="container">
+      {% block content %}
+      {% endblock %}
+    </div>
+  </section>
+
+  {% include "footer.html" %}
+
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      const burger = document.querySelector(".navbar-burger");
+      const menu = document.querySelector(".navbar-menu");
+      if (burger) {
+        burger.addEventListener("click", () => {
+          burger.classList.toggle("is-active");
+          menu.classList.toggle("is-active");
+        });
+      }
+    });
+  </script>
+
+</body>
+</html>

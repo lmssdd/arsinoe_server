@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+
+{% block title %}Documentation - ARSINOE{% endblock %}
+
+{% block content %}
+  <section class="section">
+    <div class="container content">
+      <h2>Documentation</h2>
+      <p>Please check the API documentation <a href="/docs" target="_blank">here</a> or <a href="/redoc" target="_blank">here</a> to properly use the API.</p>
+      <p>The current API endpoints are:</p>
+      <ul>
+        <li>
+          48 hours weather forecast in a demonstration site from GFS: 
+          <a href="/view/gfs/Ussana" target="_blank">GET /view/gfs/{site}</a>
+        </li>
+        <li>
+          48 hours weather forecast in a demonstration site from GFS: 
+          <a href="/api/gfs/Ussana/T2" target="_blank">GET /api/gfs/{site}/{field}</a>
+        </li>
+        <li>
+          Sentinel2 datasets availability:
+          <a href="/api/sentinel2_avail/Ussana" target="_blank">GET /api/sentinel2_avail/{site}</a>
+        </li>
+        <li>
+          Sentinel2: 
+          <a href="/api/sentinel2/Ussana" target="_blank">GET /api/sentinel2/{site}</a>
+          - with date parameter: <a href="/api/sentinel2/Ussana?date=20220103" target="_blank">GET /api/sentinel2/{site}?date=YYYYMMDD</a>
+        </li>
+        <li>
+          Sentinel2 Ussana/Benatzu test-case historical NDVI:
+          <a href="/view/sentinel2_ndvi_fields/Ussana" target="_blank">GET /view/sentinel2_ndvi_fields/{site}</a>
+        </li>
+        <li>
+          List of parameter names of the digital twin for the campaign year:
+          <a href="/api/digital_twin_keys/2023" target="_blank">GET /api/digital_twin_keys/{year}</a>
+        </li>
+        <li>
+          Get time series for a parameter (must be in the list of available parameters): 
+          <a href="/api/digital_twin_values/2023/tmin" target="_blank">GET /api/digital_twin_values/{year}/{param}</a>
+        </li>
+      </ul>
+    </div>
+  </section>
+{% endblock %}
