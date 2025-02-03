@@ -63,17 +63,6 @@ systemctl start arsinoe_server
 systemctl status arsinoe_server
 systemctl enable arsinoe_server
 
-# Copy and enable the daemons for GFS and ICON
-cp /apps/app_repo/arsinoe_server/server/units/get_gfs.service /etc/systemd/system/
-cp /apps/app_repo/arsinoe_server/server/units/get_icon.service /etc/systemd/system/
-
-systemctl start get_gfs
-systemctl status get_gfs
-systemctl enable get_gfs
-systemctl start get_icon
-systemctl status get_icon
-systemctl enable get_icon
-
 # Setup the public facing server (NGINX)
 apt install nginx
 

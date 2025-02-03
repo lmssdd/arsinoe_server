@@ -4,7 +4,7 @@ After=syslog.target
 
 [Service]
 #ExecStart=/apps/venv/bin/gunicorn --bind 127.0.0.1:8000 --workers 2 --max-requests 1000 --max-requests-jitter 50 --worker-class uvicorn.workers.UvicornWorker main:app --name sender_svc --chdir /apps/app_repo/sender_forecast --access-logfile /apps/logs/sender_forecast/access.log --error-logfile /apps/logs/sender_forecast/errors.log --user apiuser
-ExecStart=/apps/venv/bin/gunicorn --bind 127.0.0.1:8000 --workers 2 --max-requests 1000 --max-requests-jitter 50 --worker-class uvicorn.workers.UvicornWorker main:app --name arsinoe_svc --chdir /apps/app_repo/arsinoe_server --access-logfile /apps/logs/arsinoe_server/access.log --error-logfile /apps/logs/arsinoe_server/errors.log --user apiuser
+ExecStart=/apps/venv/bin/gunicorn --bind 127.0.0.1:8000 --workers 2 --max-requests 1000 --max-requests-jitter 50 --worker-class uvicorn.workers.UvicornWorker main:app --name arsinoe_svc --chdir /apps/app_repo/arsinoe_server --access-logfile /apps/logs/arsinoe_server/access.log --error-logfile /apps/logs/arsinoe_server/errors.log
 
 # \/ \/ <- Added post recording for better restart perf.
 ExecReload=/bin/kill -s HUP $MAINPID
