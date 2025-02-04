@@ -398,6 +398,16 @@ async def process_file(
 ):
     # Save the uploaded file to a temporary location
     file_location = f"{temp_path}/{file.filename}"
+
+    return f"""
+    <html>
+        <body>
+            <h1>Debug Page</h1>
+            <p>{file_location}</p>
+        </body>
+    </html>
+    """
+
     with open(file_location, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
