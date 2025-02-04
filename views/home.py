@@ -32,10 +32,6 @@ import matplotlib.cm
 import matplotlib.colors as mcolors
 from rasterstats import zonal_stats
 
-#import logging
-#logger = logging.getLogger('uvicorn.error')
-#logger.setLevel(logging.DEBUG)
-
 templates = Jinja2Templates('templates')
 router = fastapi.APIRouter()
 
@@ -532,7 +528,6 @@ async def prepare_map():
 @router.post("/upload/")
 async def upload_file(file: UploadFile = File(...)):
     file_path = os.path.join('uploads', file.filename)
-    #logger.debug(f'DEBUG: {file_path}')
     with open(file_path, "wb") as buffer:
         buffer.write(await file.read())
     return {"filename": file.filename, "filepath": file_path}
