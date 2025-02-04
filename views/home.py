@@ -398,7 +398,7 @@ async def process_file(
 ):
     # Save the uploaded file to a temporary location
     file_location = f"{temp_path}/{file.filename}"
-
+    print(file_location)
     return f"""
     <html>
         <body>
