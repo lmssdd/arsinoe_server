@@ -13,6 +13,9 @@ app = FastAPI(
 
 def configure():
     os.makedirs('uploads', exist_ok=True)
+    # Check and ensure directory is writable
+    if not os.access('uploads', os.W_OK):
+        raise PermissionError(f"Cannot write to {'uploads'}. Check directory permissions.")
     app.mount('/static', StaticFiles(directory='static'), name='static')
     app.mount("/uploads", StaticFiles(directory='uploads'), name="uploads")
     app.include_router(home.router)
