@@ -1,0 +1,39 @@
+adduser apiuser
+usermod -aG sudo apiuser
+
+# relog as apiuser
+
+sudo apt update
+sudo apt upgrade -y
+
+sudo apt install python3 python3-pip python3-venv -y
+
+pip3 install gunicorn uvicorn
+
+git clone https://github.com/lmssdd/arsinoe_server.git /apps/app_repo/arsinoe_server
+cd /apps/app_repo/arsinoe_server
+
+python3 -m venv venv
+source venv/bin/activate
+
+pip install -r requirements.txt  # If you have a requirements.txt file
+
+sudo systemctl daemon-reload
+sudo systemctl enable arsinoe_server.service
+sudo systemctl start arsinoe_server.service
+
+sudo systemctl status arsinoe_server.service
+
+sudo apt install nginx -y
+
+sudo cp /apps/app_repo/arsinoe_server/server/nginx/arsinoe_server.gemini /etc/nginx/sites-available/arsinoe_server
+sudo ln -s /etc/nginx/sites-available/arsinoe_server /etc/nginx/sites-enabled/
+sudo nginx -t # Test the configuration
+sudo systemctl restart nginx
+
+sudo ufw allow ssh
+sudo ufw allow 'Nginx Full' # Allows both HTTP and HTTPS
+sudo ufw enable
+
+sudo apt install certbot python3-certbot-nginx -y
+sudo certbot --nginx -d http://209.38.237.184 # Follow the prompts
