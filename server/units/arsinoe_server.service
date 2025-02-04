@@ -1,25 +1,13 @@
 [Unit]
-Description=gunicorn uvicorn service for Arsinoe Forecast Service API
-After=syslog.target
+Description=FastAPI Application for ARSINOE
+After=network.target
 
 [Service]
-User=apiuser
-ExecStart=/apps/venv/bin/gunicorn --bind 127.0.0.1:8000 --workers 2 --max-requests 1000 --max-requests-jitter 50 --worker-class uvicorn.workers.UvicornWorker main:app --name arsinoe_svc --chdir /apps/app_repo/arsinoe_server --access-logfile /apps/logs/arsinoe_server/access.log --error-logfile /apps/logs/arsinoe_server/errors.log
-
-# \/ \/ <- Added post recording for better restart perf.
-ExecReload=/bin/kill -s HUP $MAINPID
-KillMode=mixed
-TimeoutStopSec=5
-PrivateTmp=true
-# /\ /\ <- Added post recording for better restart perf.
-
-# Requires systemd version 211 or newer
-RuntimeDirectory=/apps/app_repo/arsinoe_server
+User=apiuser  # Run as the non-root user
+WorkingDirectory=/apps/app_repo/arsinoe_server  # Your project directory
+ExecStart=/apps/app_repo/arsinoe_server/venv/bin/gunicorn -c /apps/app_repo/arsinoe_server/gunicorn.conf.py main:app  # Start Gunicorn
 Restart=always
-Type=notify
-StandardError=syslog
-NotifyAccess=all
-
+Type=simple
 
 [Install]
 WantedBy=multi-user.target
