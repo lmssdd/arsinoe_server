@@ -1,8 +1,8 @@
 import fastapi
 from starlette.requests import Request
 from starlette.templating import Jinja2Templates
-from fastapi.responses import PlainTextResponse, StreamingResponse, HTMLResponse, JSONResponse
-from fastapi import Form, File, UploadFile
+from fastapi.responses import StreamingResponse, HTMLResponse, JSONResponse
+from fastapi import Form, File, UploadFile, HTTPException
 import requests
 from io import BytesIO
 from PIL import Image
@@ -13,7 +13,8 @@ from plotly.express.colors import sample_colorscale
 import json
 import pandas as pd
 from sklearn.preprocessing import minmax_scale
-import shutil
+import os
+
 from models.aquacrop_model import aquacrop_run_ussana, aquacrop_run_benatzu
 from models.mistral_model import get_total_dataframe
 
@@ -31,12 +32,8 @@ import matplotlib.cm
 import matplotlib.colors as mcolors
 from rasterstats import zonal_stats
 
-
 templates = Jinja2Templates('templates')
 router = fastapi.APIRouter()
-
-#temp_path  = '../TEMP'
-temp_path  = '/apps/app_repo/arsinoe_server/TEMP'
 
 @router.get('/', include_in_schema=False)
 async def index(request: Request):
@@ -398,16 +395,17 @@ async def process_file(
     site: str = Form(...)     # Parameter selected by radio buttons
 ):
     # Save the uploaded file to a temporary location
-    file_location = f"{temp_path}/{file.filename}"
-
-    with open(file_location, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+    file_path = os.path.join('uploads', file.filename)
+    with open(file_path, "wb") as buffer:
+        buffer.write(await file.read())
+    print(file_path)
 
     # Perform simulation
     if site == "Ussana":
-       model = aquacrop_run_ussana(file_location)
+        print(file_path)
+        model = aquacrop_run_ussana(file_path)
     elif site == "Benatzu":
-       model = aquacrop_run_benatzu(file_location)
+        model = aquacrop_run_benatzu(file_path)
     
     df = model._outputs.final_stats
     print(df.head())
@@ -527,3 +525,9 @@ async def prepare_map():
     map_html = ndvi_map._repr_html_()
     return map_html
 
+@router.post("/upload/")
+async def upload_file(file: UploadFile = File(...)):
+    file_path = os.path.join('uploads', file.filename)
+    with open(file_path, "wb") as buffer:
+        buffer.write(await file.read())
+    return {"filename": file.filename, "filepath": file_path}

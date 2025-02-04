@@ -1,13 +1,9 @@
-import json
-from pathlib import Path
 from fastapi import FastAPI
-import uvicorn
 from fastapi.staticfiles import StaticFiles
+import uvicorn
+import os
 
 from views import home
-
-#from fastapi_redis_cache import FastApiRedisCache, cache
-#LOCAL_REDIS_URL = "redis://127.0.0.1:6379"
 
 app = FastAPI(
     title="ARSINOE data server",
@@ -16,7 +12,9 @@ app = FastAPI(
 )
 
 def configure():
+    os.makedirs('uploads', exist_ok=True)
     app.mount('/static', StaticFiles(directory='static'), name='static')
+    app.mount("/uploads", StaticFiles(directory='uploads'), name="uploads")
     app.include_router(home.router)
 
 if __name__ == '__main__':

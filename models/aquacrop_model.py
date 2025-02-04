@@ -6,12 +6,7 @@ aquacrop_fname = "static/files/CMCC_CM2_VHR4.txt"
 
 def aquacrop_run(fname=aquacrop_fname):
 
-  # locate built in weather file
-  filepath=get_filepath( fname )
-
-
-  weather_data = prepare_weather(filepath)
-
+  weather_data = prepare_weather(fname)
 
   #sandy_clay_loam = Soil(soil_type='SandyClayLoam')
   soil_ussana=Soil('custom') # Ussana
@@ -39,13 +34,8 @@ def aquacrop_run(fname=aquacrop_fname):
 
 def aquacrop_run_benatzu(fname=aquacrop_fname):
 
-  # locate built in weather file
-  filepath=get_filepath( fname )
-
-
-  weather_data = prepare_weather(filepath)
-
-
+  weather_data = prepare_weather(fname)
+  
   #sandy_clay_loam = Soil(soil_type='SandyClayLoam')
   soil_benatzu=Soil('custom') # Benatzu
   soil_benatzu.add_layer_from_texture(thickness=soil_benatzu.zSoil,
@@ -71,12 +61,8 @@ def aquacrop_run_benatzu(fname=aquacrop_fname):
   return model
 
 def aquacrop_run_ussana(fname=aquacrop_fname):
-  # locate built in weather file
-  filepath=get_filepath(fname)
 
-
-  weather_data = prepare_weather(filepath)
-
+  weather_data = prepare_weather(fname)
 
   #sandy_clay_loam = Soil(soil_type='SandyClayLoam')
   soil_ussana=Soil('custom') # Ussana
