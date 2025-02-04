@@ -35,7 +35,7 @@ from rasterstats import zonal_stats
 templates = Jinja2Templates('templates')
 router = fastapi.APIRouter()
 
-temp_path  = './TEMP'
+temp_path  = '../TEMP'
 
 @router.get('/', include_in_schema=False)
 async def index(request: Request):
