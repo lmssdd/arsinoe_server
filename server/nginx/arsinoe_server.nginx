@@ -13,6 +13,7 @@ server {
     }
     location / {
         try_files $uri @yourapplication;
+        client_max_body_size 10M; # Increase the limit to 10MB
     }
     location @yourapplication {
         gzip            on;
