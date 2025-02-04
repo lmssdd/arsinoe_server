@@ -35,6 +35,8 @@ from rasterstats import zonal_stats
 templates = Jinja2Templates('templates')
 router = fastapi.APIRouter()
 
+temp_path  = '/tmp'
+
 @router.get('/', include_in_schema=False)
 async def index(request: Request):
     return templates.TemplateResponse('index.html', {'request': request})
@@ -395,7 +397,7 @@ async def process_file(
     site: str = Form(...)     # Parameter selected by radio buttons
 ):
     # Save the uploaded file to a temporary location
-    file_location = f"/Users/lucam/Documents/GitHub/Arsinoe-server/temp/{file.filename}"
+    file_location = f"{temp_path}/{file.filename}"
     with open(file_location, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
