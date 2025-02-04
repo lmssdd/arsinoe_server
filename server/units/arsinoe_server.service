@@ -1,13 +1,12 @@
 [Unit]
-Description=FastAPI Application for ARSINOE
-After=network.target
+Description=gunicorn uvicorn service for Arsinoe Forecast Service API
+After=syslog.target
 
 [Service]
-User=apiuser  # Run as the non-root user
-WorkingDirectory=/apps/app_repo/arsinoe_server  # Your project directory
-ExecStart=/apps/app_repo/arsinoe_server/venv/bin/gunicorn -c /apps/app_repo/arsinoe_server/gunicorn.conf.py main:app  # Start Gunicorn
+User=apiuser
+WorkingDirectory=/apps/app_repo/arsinoe_server
+ExecStart=/apps/app_repo/arsinoe_server/venv/bin/gunicorn -b 127.0.0.1:8000 main:app  # Simplified command
 Restart=always
-Type=simple
 
 [Install]
 WantedBy=multi-user.target

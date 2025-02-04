@@ -8,7 +8,8 @@ sudo apt upgrade -y
 
 sudo apt install python3 python3-pip python3-venv -y
 
-pip3 install gunicorn uvicorn
+sudo mkdir -p /apps/app_repo  # -p creates parent directories as needed
+sudo chown -R apiuser:apiuser /apps/app_repo
 
 git clone https://github.com/lmssdd/arsinoe_server.git /apps/app_repo/arsinoe_server
 cd /apps/app_repo/arsinoe_server
@@ -16,7 +17,12 @@ cd /apps/app_repo/arsinoe_server
 python3 -m venv venv
 source venv/bin/activate
 
+pip install gunicorn uvicorn
+
 pip install -r requirements.txt  # If you have a requirements.txt file
+
+# Copy and enable the daemon
+sudo cp /apps/app_repo/arsinoe_server/server/units/arsinoe_server.service /etc/systemd/system/
 
 sudo systemctl daemon-reload
 sudo systemctl enable arsinoe_server.service

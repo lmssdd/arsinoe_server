@@ -1,6 +1,7 @@
 server {
     listen 80;  # Listen on port 80 (HTTP)
     server_name http://209.38.237.184/; # Replace with your droplet's IP or domain
+    client_max_body_size 10M;  # Example: 10 Megabytes. Adjust as needed.
 
     location / {
         proxy_pass http://127.0.0.1:8000;  # Forward requests to Gunicorn
