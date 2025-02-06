@@ -64,13 +64,6 @@
 
     #weather-icon {
       font-size: 4rem;
-      animation: weatherCycle 3s linear infinite;
-    }
-
-    @keyframes weatherCycle {
-      0%, 100% { content: "☀️"; }
-      33% { content: "☁️"; }
-      66% { content: "🌧️"; }
     }
   </style>
 
@@ -108,16 +101,12 @@
     });
 
     function cycleWeatherIcons() {
-      const weatherIcons = ["☀️", "☁️", "🌧️"];
-      let index = 0;
+      const weatherIcons = ["☀️", "☁️", "🌧️", "🌤️", "🌦️", "🌨️"];
       const iconElement = document.getElementById("weather-icon");
-      
-      const interval = setInterval(() => {
-        iconElement.textContent = weatherIcons[index];
-        index = (index + 1) % weatherIcons.length;
+      let interval = setInterval(() => {
+        const randomIndex = Math.floor(Math.random() * weatherIcons.length);
+        iconElement.textContent = weatherIcons[randomIndex];
       }, 1000);
-      
-      setTimeout(() => clearInterval(interval), 10000);
     }
   </script>
 {% endblock %}
