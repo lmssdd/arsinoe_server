@@ -1,7 +1,17 @@
+### sudo nano /etc/nginx/nginx.conf
+http {
+    # ... other http directives ...
+
+    limit_req_zone $binary_remote_addr zone=my_limit:10m rate=10r/s;
+    limit_conn_zone $binary_remote_addr zone=my_conn_limit:10m;
+}
+
+### sudo nano /etc/nginx/sites-enabled/arsinoe_server
 server {
+    # ... other server directives ...
     listen 80;  # Listen on port 80 (HTTP)
     server_name 209.38.237.184; # Replace with your droplet's IP or domain
-    client_max_body_size 50M;  # Example: 10 Megabytes. Adjust as needed.
+    client_max_body_size 50M;
 
     location / {
         proxy_pass http://127.0.0.1:8000;  # Forward requests to Gunicorn
@@ -10,4 +20,13 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
     }
+    
+    location /upload {
+        limit_req zone=my_limit burst=20 nodelay; # Apply rate limit (location level)
+        limit_conn zone=my_limit_conn;         # Apply connection limit (location level)
+        # ... other location directives ...
+    }
+
+    # ... other locations ...
 }
+

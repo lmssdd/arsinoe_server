@@ -69,21 +69,37 @@
       top: 50%;
       left: 50%;
       transform: translate(-50%, -50%);
-      text-align: center;
       z-index: 1000;
+      background-color: rgba(0, 0, 0, 0.5); /* Semi-transparent backdrop */
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
-    #loading .spinner {
-      border: 4px solid rgba(0, 0, 0, 0.1);
-      border-top: 4px solid #00d1b2;
-      border-radius: 50%;
-      width: 40px;
-      height: 40px;
-      animation: spin 1s linear infinite;
+
+    .lds-wheat {
+      width: 80px;
+      height: 80px;
+      animation: grow 2s linear infinite; /* Adjust duration as needed */
     }
-    @keyframes spin {
-      to {
-        transform: rotate(360deg);
-      }
+
+    .lds-wheat svg {
+      width: 100%;
+      height: 100%;
+      fill: #00d1b2; /* Teal color for the wheat */
+    }
+
+    @keyframes grow {
+      0% { transform: scale(0.5); opacity: 0.7; } /* Start small and slightly transparent */
+      50% { transform: scale(1); opacity: 1; } /* Grow to full size and opaque */
+      100% { transform: scale(0.5); opacity: 0.7; } /* Shrink back and slightly transparent */
+    }
+
+    #loading p {
+      color: white;
+      margin-top: 1rem;
+      font-size: 1.2rem;
     }
   </style>
 
