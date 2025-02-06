@@ -36,15 +36,61 @@
   </form>
   
   <div id="loading" style="display: none;">
-    <div class="spinner">
-      <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">  
-        <path d="M19 18.3c0 1.2-.9 2.1-2 2.1H7c-1.1 0-2-.9-2-2.1V5.7c0-1.2.9-2.1 2-2.1h10c1.1 0 2 .9 2 2.1v12.6zM12 17c-.8 0-1.5-.7-1.5-1.5V9.5c0-.8.7-1.5 1.5-1.5.8 0 1.5.7 1.5 1.5v6c0 .8-.7 1.5-1.5 1.5z" fill="#00d1b2"/> 
-      </svg>
+    <div class="weather-animation">
+      <div class="sun"></div>
+      <div class="raindrop"></div>
+      <p>Please wait, calculating wheat yield...</p>
     </div>
-    <p>Please wait, calculations are in progress...</p>
   </div>
   
   <div id="plot" class="mt-5"></div>
+
+  <style>
+    .weather-animation {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background-color: rgba(0, 0, 0, 0.5);
+      padding: 20px;
+      border-radius: 10px;
+      text-align: center;
+      color: white;
+      font-size: 1.2rem;
+    }
+
+    .sun {
+      width: 50px;
+      height: 50px;
+      background-color: #ffdd57;
+      border-radius: 50%;
+      animation: sunRainCycle 3s linear infinite;
+    }
+
+    .raindrop {
+      width: 10px;
+      height: 20px;
+      background-color: #00aaff;
+      border-radius: 50% 50% 0 0;
+      transform: translateY(-10px);
+      opacity: 0;
+      animation: rainDropCycle 3s linear infinite;
+    }
+
+    @keyframes sunRainCycle {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0; transform: scale(0.5); }
+    }
+
+    @keyframes rainDropCycle {
+      0%, 100% { opacity: 0; transform: translateY(-10px); }
+      50% { opacity: 1; transform: translateY(10px); }
+    }
+  </style>
 
   <script>
     document.getElementById('uploadForm').addEventListener('submit', async (event) => {
