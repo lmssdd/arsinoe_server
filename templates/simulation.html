@@ -35,10 +35,11 @@
     </div>
   </form>
   
-  <div id="loading">
-    <!--<div class="spinner"></div>-->
+  <div id="loading" style="display: none;">
     <div class="spinner">
-      <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">  <path d="M19 18.3c0 1.2-.9 2.1-2 2.1H7c-1.1 0-2-.9-2-2.1V5.7c0-1.2.9-2.1 2-2.1h10c1.1 0 2 .9 2 2.1v12.6zM12 17c-.8 0-1.5-.7-1.5-1.5V9.5c0-.8.7-1.5 1.5-1.5.8 0 1.5.7 1.5 1.5v6c0 .8-.7 1.5-1.5 1.5z" fill="#00d1b2"/> </svg>
+      <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">  
+        <path d="M19 18.3c0 1.2-.9 2.1-2 2.1H7c-1.1 0-2-.9-2-2.1V5.7c0-1.2.9-2.1 2-2.1h10c1.1 0 2 .9 2 2.1v12.6zM12 17c-.8 0-1.5-.7-1.5-1.5V9.5c0-.8.7-1.5 1.5-1.5.8 0 1.5.7 1.5 1.5v6c0 .8-.7 1.5-1.5 1.5z" fill="#00d1b2"/> 
+      </svg>
     </div>
     <p>Please wait, calculations are in progress...</p>
   </div>
@@ -48,7 +49,9 @@
   <script>
     document.getElementById('uploadForm').addEventListener('submit', async (event) => {
       event.preventDefault();
-      document.getElementById('loading').style.display = 'block';
+      
+      const loadingElement = document.getElementById('loading');
+      loadingElement.style.display = 'flex';
 
       const fileInput = document.getElementById('fileInput');
       const formData = new FormData();
@@ -71,7 +74,7 @@
         console.error('Error:', error);
         alert('An error occurred. Please try again.');
       } finally {
-        document.getElementById('loading').style.display = 'none';
+        loadingElement.style.display = 'none';
       }
     });
   </script>
