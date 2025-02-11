@@ -398,7 +398,6 @@ async def process_file(
     file_path = os.path.join('uploads', file.filename)
     with open(file_path, "wb") as buffer:
         buffer.write(await file.read())
-    print(file_path)
 
     # Perform simulation
     if site == "Ussana":
@@ -408,7 +407,11 @@ async def process_file(
         model = aquacrop_run_benatzu(file_path)
     
     df = model._outputs.final_stats
-    print(df.head())
+
+    # Save the DataFrame as JSON
+    json_filename = f"{file.filename}_results.json"
+    json_filepath = os.path.join("uploads", json_filename)
+    df.to_json(json_filepath, orient="records", date_format="iso")  # Save as JSON
 
     # Create a Plotly figure
     fig = go.Figure()
@@ -423,26 +426,21 @@ async def process_file(
                       xaxis_showgrid=True, yaxis_showgrid=True, 
                       height=500)
     
-    # Serialize the figure using PlotlyJSONEncoder
+    # Convert figure to JSON for frontend
     fig_json = json.dumps(fig, cls=PlotlyJSONEncoder)
 
-    # Save JSON file for download
-    json_filename = f"{site}_simulation_results.json"
-    json_filepath = os.path.join('downloads', json_filename)
-    with open(json_filepath, "w") as json_file:
-        json.dump(fig, json_file)
-
-    # Return JSON response with download link
-    return {
+    # Return response with download URL
+    download_url = f"/download/{json_filename}"
+    return JSONResponse(content={
         "plot": json.loads(fig_json),
-        "download_url": f"/download/{json_filename}"
-    }
+        "download_url": download_url
+    })
 
 @router.get("/download/{filename}")
 async def download_file(filename: str):
-    file_path = os.path.join('downloads', filename)
+    file_path = os.path.join("uploads", filename)
     if os.path.exists(file_path):
-        return FileResponse(file_path, filename=filename, media_type="application/json")
+        return FileResponse(file_path, media_type="application/json", filename=filename)
     return JSONResponse(content={"error": "File not found"}, status_code=404)
 
 @router.get("/ndvi_map", include_in_schema=False, response_class=HTMLResponse)

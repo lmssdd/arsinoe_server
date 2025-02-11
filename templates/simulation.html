@@ -44,9 +44,7 @@
   
   <div id="plot" class="mt-5"></div>
 
-  <div id="download-link" class="mt-3" style="display: none;">
-    <a id="downloadResults" class="button is-link" href="#" download>Download Results</a>
-  </div>
+  <div id="downloadLink" class="mt-3"></div>
 
   <style>
     .weather-animation {
@@ -98,12 +96,11 @@
         
         // Render the plot
         Plotly.newPlot('plot', result.plot.data, result.plot.layout);
-        
-        // Update download link
-        const downloadLink = document.getElementById("downloadResults");
-        downloadLink.href = result.download_url;
-        document.getElementById("download-link").style.display = 'block';
-        
+
+        // Add download link
+        const downloadDiv = document.getElementById('downloadLink');
+        downloadDiv.innerHTML = `<a href="${result.download_url}" download="results.json" class="button is-info">Download Results as JSON</a>`;
+
       } catch (error) {
         console.error('Error:', error);
         alert('An error occurred. Please try again.');
