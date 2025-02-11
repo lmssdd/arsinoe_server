@@ -1,7 +1,7 @@
 import fastapi
 from starlette.requests import Request
 from starlette.templating import Jinja2Templates
-from fastapi.responses import StreamingResponse, HTMLResponse, JSONResponse
+from fastapi.responses import StreamingResponse, HTMLResponse, JSONResponse, FileResponse
 from fastapi import Form, File, UploadFile, HTTPException
 import requests
 from io import BytesIO
@@ -426,9 +426,24 @@ async def process_file(
     # Serialize the figure using PlotlyJSONEncoder
     fig_json = json.dumps(fig, cls=PlotlyJSONEncoder)
 
-    # Return the JSON response
-    return JSONResponse(content=json.loads(fig_json))
+    # Save JSON file for download
+    json_filename = f"{site}_simulation_results.json"
+    json_filepath = os.path.join('downloads', json_filename)
+    with open(json_filepath, "w") as json_file:
+        json.dump(fig, json_file)
 
+    # Return JSON response with download link
+    return {
+        "plot": json.loads(fig_json),
+        "download_url": f"/download/{json_filename}"
+    }
+
+@router.get("/download/{filename}")
+async def download_file(filename: str):
+    file_path = os.path.join('downloads', filename)
+    if os.path.exists(file_path):
+        return FileResponse(file_path, filename=filename, media_type="application/json")
+    return JSONResponse(content={"error": "File not found"}, status_code=404)
 
 @router.get("/ndvi_map", include_in_schema=False, response_class=HTMLResponse)
 async def prepare_map():

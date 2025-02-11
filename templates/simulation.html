@@ -44,6 +44,10 @@
   
   <div id="plot" class="mt-5"></div>
 
+  <div id="download-link" class="mt-3" style="display: none;">
+    <a id="downloadResults" class="button is-link" href="#" download>Download Results</a>
+  </div>
+
   <style>
     .weather-animation {
       display: flex;
@@ -90,8 +94,16 @@
 
         if (!response.ok) throw new Error(`Server error: ${response.status}`);
 
-        const plotData = await response.json();
-        Plotly.newPlot('plot', plotData.data, plotData.layout);
+        const result = await response.json();
+        
+        // Render the plot
+        Plotly.newPlot('plot', result.plot.data, result.plot.layout);
+        
+        // Update download link
+        const downloadLink = document.getElementById("downloadResults");
+        downloadLink.href = result.download_url;
+        document.getElementById("download-link").style.display = 'block';
+        
       } catch (error) {
         console.error('Error:', error);
         alert('An error occurred. Please try again.');
