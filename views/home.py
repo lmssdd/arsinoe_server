@@ -2,7 +2,7 @@ import fastapi
 from starlette.requests import Request
 from starlette.templating import Jinja2Templates
 from fastapi.responses import StreamingResponse, HTMLResponse, JSONResponse, FileResponse
-from fastapi import Form, File, UploadFile, HTTPException
+from fastapi import Form, File, UploadFile, HTTPException, Query
 import requests
 from io import BytesIO
 from PIL import Image
@@ -13,9 +13,11 @@ from plotly.express.colors import sample_colorscale
 import json
 import pandas as pd
 from sklearn.preprocessing import minmax_scale
+from datetime import datetime
 import os
+import traceback
 
-from models.aquacrop_model import aquacrop_run_ussana, aquacrop_run_benatzu
+from models.aquacrop_model import aquacrop_run_ussana, aquacrop_run_benatzu, run_ensemble_and_generate_plot
 from models.mistral_model import get_total_dataframe
 
 import openmeteo_requests
@@ -544,3 +546,9 @@ async def upload_file(file: UploadFile = File(...)):
     with open(file_path, "wb") as buffer:
         buffer.write(await file.read())
     return {"filename": file.filename, "filepath": file_path}
+
+
+@router.get("/water_profile")
+def water_profile(location: str = Query("Ussana"), force: bool = Query(False)):
+    image_path = run_ensemble_and_generate_plot(location, force=force)
+    return {"image_url": f"/{image_path}"}

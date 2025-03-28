@@ -8,6 +8,7 @@
       <li class="is-active"><a>Meteograms</a></li>
       <li><a>NDVI</a></li>
       <li><a>History</a></li>
+      <li><a>Water Profile</a></li>
     </ul>
   </div>
 
@@ -39,6 +40,25 @@
     </div>
   </div>
 
+  <div class="tab-content is-hidden">
+    <div id="WaterProfile" style="text-align: center;">
+      <div style="margin-bottom: 1rem;">
+        <label class="radio">
+          <input type="radio" name="location" value="Ussana" checked>
+          Ussana
+        </label>
+        <label class="radio">
+          <input type="radio" name="location" value="Benatzu">
+          Benatzu
+        </label>
+      </div>
+      <div id="WaterProfileImage"></div>
+    </div>
+    <p class="caption">
+      Water Profile chart generated via ensemble simulation.
+    </p>
+  </div>
+
   <script>
     document.addEventListener("DOMContentLoaded", () => {
       const tabs = document.querySelectorAll(".tabs li");
@@ -55,7 +75,7 @@
       }
 
       function loadAllTabs() {
-        Promise.all([loadForecastPlot(), loadNDVIPlot(), loadPrecPlot()])
+        Promise.all([loadForecastPlot(), loadNDVIPlot(), loadPrecPlot(), loadWaterProfile()])
           .then(() => {
             showContent(); // Show everything only when all plots are loaded
           })
@@ -100,7 +120,23 @@
           });
       }
 
+      function loadWaterProfile(location = "Ussana") {
+        return fetch(`/water_profile?location=${location}`)
+          .then(response => response.json())
+          .then(data => {
+            document.getElementById("WaterProfileImage").innerHTML =
+              `<img src="${data.image_url}" alt="Water Profile Chart">`;
+          });
+      }
+
       loadAllTabs();
+
+      document.querySelectorAll('input[name="location"]').forEach(radio => {
+        radio.addEventListener('change', (event) => {
+          loadWaterProfile(event.target.value);
+        });
+      });
+
     });
   </script>
 {% endblock %}
