@@ -391,7 +391,7 @@ def plot_ensemble_quantiles(models, name, save_path, drop_days=30):
         
         #ensemble_data['yield_'].append(outputs.yield_[-drop_days:-1])
         
-        ensemble_data['yield_'].append(outputs.YieldPot[-drop_days:-1])
+        ensemble_data['yield_'].append(outputs.DryYield[-drop_days:-1])
         ensemble_data['Wr'].append(fluxes.Wr[-drop_days:-1])
         ensemble_data['Infl'].append(fluxes.Infl[-drop_days:-1])
         ensemble_data['Runoff'].append(fluxes.Runoff[-drop_days:-1])
