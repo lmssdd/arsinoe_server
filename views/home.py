@@ -550,5 +550,8 @@ async def upload_file(file: UploadFile = File(...)):
 
 @router.get("/water_profile")
 def water_profile(location: str = Query("Ussana"), force: bool = Query(False)):
-    image_path = run_ensemble_and_generate_plot(location, force=force)
-    return {"image_url": f"/{image_path}"}
+    image_path_1, image_path_2 = run_ensemble_and_generate_plot(location, force=force)
+    return {
+        "image_url_1": f"/{image_path_1}", 
+        "image_url_2": f"/{image_path_2}"
+    }

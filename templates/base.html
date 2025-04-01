@@ -89,7 +89,38 @@
     </div>
   </section>
 
+  <div id="global-loading" style="display: none;">
+    <div class="weather-animation">
+      <div id="global-weather-icon">☀️</div>
+      <p>Loading... Please wait</p>
+    </div>
+  </div>
+  
   {% include "footer.html" %}
+
+  <style>
+    .weather-animation {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background-color: rgba(0, 0, 0, 0.5);
+      padding: 20px;
+      border-radius: 10px;
+      text-align: center;
+      color: white;
+      font-size: 1.5rem;
+      z-index: 9999;
+    }
+  
+    #global-weather-icon {
+      font-size: 4rem;
+    }
+  </style>
 
   <script>
     document.addEventListener("DOMContentLoaded", () => {
@@ -102,6 +133,30 @@
         });
       }
     });
+
+    function showGlobalLoading(message = "Loading... Please wait") {
+      const loader = document.getElementById("global-loading");
+      const icon = document.getElementById("global-weather-icon");
+      loader.querySelector("p").textContent = message;
+      loader.style.display = "flex";
+      cycleGlobalWeatherIcons(icon);
+    }
+
+    function hideGlobalLoading() {
+      document.getElementById("global-loading").style.display = "none";
+    }
+
+    function cycleGlobalWeatherIcons(iconElement) {
+      const weatherIcons = ["☀️", "☁️", "🌧️", "🌤️", "🌦️", "🌨️"];
+      let intervalId = setInterval(() => {
+        const i = Math.floor(Math.random() * weatherIcons.length);
+        iconElement.textContent = weatherIcons[i];
+      }, 1000);
+
+      // Store interval on the element so we can clear it if needed
+      iconElement.dataset.intervalId = intervalId;
+    }
+
   </script>
 
 </body>

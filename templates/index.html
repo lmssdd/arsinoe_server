@@ -52,12 +52,49 @@
           Benatzu
         </label>
       </div>
-      <div id="WaterProfileImage"></div>
+    
+      <!-- 🔁 SPINNER PRIMA -->
+      <div id="water-loading" style="display: none;">
+        <div class="weather-animation">
+          <div id="water-weather-icon">☀️</div>
+          <p>Running AquaCrop ensemble simulation...</p>
+        </div>
+      </div>
+    
+      <!-- 👇 IMMAGINI DOPO -->
+      <div id="WaterProfileImage">
+        <img id="img1" alt="Water Profile Chart 1" style="margin-bottom: 1rem;">
+        <img id="img2" alt="Water Profile Chart 2">
+      </div>
     </div>
+
     <p class="caption">
       Water Profile chart generated via ensemble simulation.
     </p>
   </div>
+
+  <style>
+    .weather-animation {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background-color: rgba(0, 0, 0, 0.5);
+      padding: 20px;
+      border-radius: 10px;
+      text-align: center;
+      color: white;
+      font-size: 1.5rem;
+    }
+
+    #weather-icon {
+      font-size: 4rem;
+    }
+  </style>
 
   <script>
     document.addEventListener("DOMContentLoaded", () => {
@@ -65,23 +102,24 @@
       const tabContents = document.querySelectorAll(".tab-content");
       const tabContainer = document.querySelector(".tabs");
 
-      // Initially hide tabs and content until fully loaded
+      // Hide everything initially
       tabContainer.style.visibility = "hidden";
       tabContents.forEach(tc => tc.style.visibility = "hidden");
 
-      function showContent() {
-          tabContainer.style.visibility = "visible";
-          tabContents.forEach(tc => tc.style.visibility = "visible");
-      }
+      // Load all tabs with spinner on initial load
+      showGlobalLoading("Loading dashboard...");
+      loadAllTabs()
+        .then(() => {
+          showContent();
+          hideGlobalLoading();
+        })
+        .catch(error => {
+          hideGlobalLoading();
+          console.error("Error loading homepage:", error);
+          alert("Something went wrong while loading the dashboard.");
+        });
 
-      function loadAllTabs() {
-        Promise.all([loadForecastPlot(), loadNDVIPlot(), loadPrecPlot(), loadWaterProfile()])
-          .then(() => {
-            showContent(); // Show everything only when all plots are loaded
-          })
-          .catch(error => console.error("Error loading content:", error));
-      }
-
+      // Tab switching
       tabs.forEach((tab, index) => {
         tab.addEventListener("click", () => {
           tabs.forEach(t => t.classList.remove("is-active"));
@@ -96,47 +134,71 @@
         });
       });
 
-      function loadForecastPlot() {
-        return fetch("/gfs_forecast/39.415/9.1")
-          .then(response => response.json())
-          .then(plotlyData => {
-            Plotly.newPlot("Forecast", plotlyData.data, plotlyData.layout);
-          });
-      }
-
-      function loadNDVIPlot() {
-        return fetch("/ndvi_map")
-          .then(response => response.text())
-          .then(html => {
-            document.getElementById("NDVI").innerHTML = html;
-          });
-      }
-
-      function loadPrecPlot() {
-        return fetch("/prec_plot/Ussana")
-          .then(response => response.json())
-          .then(plotlyData => {
-            Plotly.newPlot("Precipitation", plotlyData.data, plotlyData.layout);
-          });
-      }
-
-      function loadWaterProfile(location = "Ussana") {
-        return fetch(`/water_profile?location=${location}`)
-          .then(response => response.json())
-          .then(data => {
-            document.getElementById("WaterProfileImage").innerHTML =
-              `<img src="${data.image_url}" alt="Water Profile Chart">`;
-          });
-      }
-
-      loadAllTabs();
-
+      // Location radio buttons for water profile
       document.querySelectorAll('input[name="location"]').forEach(radio => {
         radio.addEventListener('change', (event) => {
           loadWaterProfile(event.target.value);
         });
       });
-
     });
+
+    function showContent() {
+      const tabContainer = document.querySelector(".tabs");
+      const tabContents = document.querySelectorAll(".tab-content");
+      tabContainer.style.visibility = "visible";
+      tabContents.forEach(tc => tc.style.visibility = "visible");
+    }
+
+    function loadAllTabs() {
+      return Promise.all([
+        loadForecastPlot(),
+        loadNDVIPlot(),
+        loadPrecPlot(),
+        loadWaterProfile()
+      ]);
+    }
+
+    function loadForecastPlot() {
+      return fetch("/gfs_forecast/39.415/9.1")
+        .then(response => response.json())
+        .then(plotlyData => {
+          Plotly.newPlot("Forecast", plotlyData.data, plotlyData.layout);
+        });
+    }
+
+    function loadNDVIPlot() {
+      return fetch("/ndvi_map")
+        .then(response => response.text())
+        .then(html => {
+          document.getElementById("NDVI").innerHTML = html;
+        });
+    }
+
+    function loadPrecPlot() {
+      return fetch("/prec_plot/Ussana")
+        .then(response => response.json())
+        .then(plotlyData => {
+          Plotly.newPlot("Precipitation", plotlyData.data, plotlyData.layout);
+        });
+    }
+
+    function loadWaterProfile(location = "Ussana") {
+      showGlobalLoading("Running AquaCrop ensemble simulation...");
+      return fetch(`/water_profile?location=${location}`)
+        .then(response => response.json())
+        .then(data => {
+          document.getElementById("img1").src = data.image_url_1;
+          document.getElementById("img2").src = data.image_url_2;
+        })
+        .catch(error => {
+          console.error("Error loading water profile:", error);
+          alert("Failed to load water profile.");
+        })
+        .finally(() => {
+          hideGlobalLoading();
+        });
+    }
   </script>
+
+
 {% endblock %}

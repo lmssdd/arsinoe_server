@@ -102,7 +102,7 @@ def aquacrop_run_ussana(fname=aquacrop_fname):
 
 
 
-def run_ensemble_and_generate_plot(location: str, force: bool = False) -> str:
+def run_ensemble_and_generate_plot(location: str, force: bool = False) -> tuple[str, str]:
     data_dir = './data'
 
     if location == "Ussana":
@@ -247,13 +247,15 @@ def run_ensemble_and_generate_plot(location: str, force: bool = False) -> str:
         mu.run_model(till_termination=True)  
         models[m]=mu
 
-    output_path = os.path.join("static/png", f"water_profile_quantiles_{location}_{today_str}.png")
-    if os.path.exists(output_path) and not force:
-        return output_path
+    water_path = os.path.join("static/png", f"water_profile_quantiles_{location}_{today_str}.png")
+    outputs_path = os.path.join("static/png", f"model_outputs_{location}_{today_str}.png")
+    if os.path.exists(water_path) and os.path.exists(outputs_path) and not force:
+        return water_path, outputs_path
     
-    plot_wprof_out(models, location, output_path)
+    plot_wprof_out(models, location, water_path)
+    plot_ensemble_quantiles(models, name, outputs_path)
 
-    return output_path
+    return water_path, outputs_path
 
 
 def reorganize_gens_json(data):
@@ -326,6 +328,145 @@ def plot_wprof_out(models, name, save_path, forecast_days=30):
     plt.tight_layout()
     plt.savefig(save_path)
     plt.close()
+
+def plot_ensemble_quantiles(models, name, save_path, drop_days=30):
+    """
+    Generates a figure with 16 subplots, showing the median and quantile areas
+    (10, 25, 75, 90 percentiles) for various model output variables.
+
+    Args:
+        models (list): A list of model objects, each with a '_outputs' attribute
+                    containing the time series data.
+        name (str): A string to be used in the titles and labels of the plots.
+        drop_days (int, optional): The number of last days to exclude from
+                                    the time series. Defaults to 30.
+    """
+    fig, axs = plt.subplots(4, 4, figsize=(12, 9))
+    axs = axs.flatten()
+    n_members = len(models)
+
+    # Prepare a dictionary to hold all ensemble time series for each variable
+    ensemble_data = {
+        'gdd': [],
+        'gdd_cum': [],
+        'z_root': [],
+        'canopy_cover': [],
+        'canopy_cover_ns': [],
+        'biomass': [],
+        'biomass_ns': [],
+        'harvest_index': [],
+        'harvest_index_adj': [],
+        'yield_': [],
+        'Wr': [],
+        'Infl': [],
+        'Runoff': [],
+        'DeepPerc': [],
+        'Es': [],
+        'EsPot': [],
+        'Tr': [],
+        'TrPot': [],
+        'th1': [],
+        'Infl_cum': [],
+        'Es_cum': []
+    }
+
+    # Extract data for all ensemble members
+    for m in range(n_members):
+        outputs = models[m]._outputs.crop_growth
+        fluxes = models[m]._outputs.water_flux
+        storage = models[m]._outputs.water_storage
+        print(outputs.columns)
+        ensemble_data['gdd'].append(outputs.gdd[-drop_days:-1])
+        ensemble_data['gdd_cum'].append(outputs.gdd_cum[-drop_days:-1])
+        ensemble_data['z_root'].append(outputs.z_root[:-1])
+        ensemble_data['canopy_cover'].append(outputs.canopy_cover_ns[-drop_days:-1]-outputs.canopy_cover[-drop_days:-1])
+        #ensemble_data['canopy_cover'].append(outputs.canopy_cover[-drop_days:-1])
+        #ensemble_data['canopy_cover_ns'].append(outputs.canopy_cover_ns[-drop_days:-1])
+        ensemble_data['biomass'].append(outputs.biomass_ns[-drop_days:-1]-outputs.biomass[-drop_days:-1])
+        #ensemble_data['biomass'].append(outputs.biomass[-drop_days:-1])
+        #ensemble_data['biomass_ns'].append(outputs.biomass_ns[-drop_days:-1])
+        ensemble_data['harvest_index'].append(outputs.harvest_index_adj[-drop_days:-1]-outputs.harvest_index[-drop_days:-1])
+        #ensemble_data['harvest_index'].append(outputs.harvest_index[-drop_days:-1])
+        #ensemble_data['harvest_index_adj'].append(outputs.harvest_index_adj[-drop_days:-1])
+        
+        #ensemble_data['yield_'].append(outputs.yield_[-drop_days:-1])
+        
+        ensemble_data['yield_'].append(outputs.YieldPot[-drop_days:-1])
+        ensemble_data['Wr'].append(fluxes.Wr[-drop_days:-1])
+        ensemble_data['Infl'].append(fluxes.Infl[-drop_days:-1])
+        ensemble_data['Runoff'].append(fluxes.Runoff[-drop_days:-1])
+        ensemble_data['DeepPerc'].append(fluxes.DeepPerc[-drop_days:-1])
+        ensemble_data['Es'].append(fluxes.Es[-drop_days:-1])
+        ensemble_data['EsPot'].append(fluxes.EsPot[-drop_days:-1])
+        ensemble_data['Tr'].append(fluxes.Tr[-drop_days:-1])
+        ensemble_data['TrPot'].append(fluxes.TrPot[-drop_days:-1])
+        ensemble_data['th1'].append(storage.th1[-drop_days:-1])
+        ensemble_data['Infl_cum'].append(fluxes.Infl.cumsum()[:-1])
+        ensemble_data['Es_cum'].append(fluxes.Es.cumsum()[:-1])
+        if(m==0):
+            axs[15].plot(models[m]._outputs.water_flux.Infl.cumsum()[:-1],c='b',label=name+' Pcum')
+            axs[15].plot(models[m]._outputs.water_flux.Es.cumsum()[:-1],c='g',label=name+' Ecum')
+            axs[15].grid(True)
+        else:
+            axs[15].plot(models[m]._outputs.water_flux.Infl.cumsum()[:-1],c='b')
+            axs[15].plot(models[m]._outputs.water_flux.Es.cumsum()[:-1],c='g')
+        max_plu=200
+        axs[15].plot((13,13),(0,max_plu))#,label='Emergence')
+        axs[15].plot((93,93),(0,max_plu))#,label='MaxRooting')
+        axs[15].plot((127,127),(0,max_plu))#,label='HIstart')
+        axs[15].plot((127+15,127+15),(50,max_plu-50))#,label='Flowering')
+        axs[15].plot((158,158),(0,max_plu))#,label='Senescence')
+        axs[15].plot((197,197),(0,max_plu))#,label='Maturity')
+
+    # Calculate and plot quantiles for each variable
+    variables_to_plot = [
+        ('gdd', axs[0], 'GDD'),
+        ('gdd_cum', axs[1], 'GDD_CUM'),
+        ('z_root', axs[2], 'Z_ROOT'),
+        ('canopy_cover', axs[3], 'CC'),
+        #('canopy_cover_ns', axs[3], 'CC_ns'),
+        ('biomass', axs[4], 'biomass'),
+        #('biomass_ns', axs[4], 'biomass_ns'),
+        ('harvest_index', axs[5], 'HI'),
+        #('harvest_index_adj', axs[5], 'HI_adj'),
+        ('yield_', axs[6], 'yield'),
+        ('Wr', axs[7], 'Wr'),
+        ('Infl', axs[8], 'Infl'),
+        ('Runoff', axs[9], 'Runoff'),
+        ('DeepPerc', axs[10], 'DeepPerc'),
+        ('Es', axs[10], 'Es'),
+        ('EsPot', axs[11], 'EsPot'),
+        ('Tr', axs[12], 'Tr'),
+        ('TrPot', axs[13], 'TrPot'),
+        ('th1', axs[14], 'th1'),
+        #('Infl_cum', axs[15], 'Pcum', {'color': 'b'}),
+        #('Es_cum', axs[15], 'Ecum', {'color': 'g'})
+    ]
+
+    for var_name, ax, label, *args in variables_to_plot:
+        data = np.array(ensemble_data[var_name])
+        if data.size > 0:
+            quantiles = np.nanpercentile(data, [10, 25, 50, 75, 90], axis=0)
+            x = np.arange(data.shape[1])
+
+            ax.fill_between(x, quantiles[0], quantiles[4], color='gray', alpha=0.2, label=f'{label} 10-90%')
+            ax.fill_between(x, quantiles[1], quantiles[3], color='blue', alpha=0.3, label=f'{label} 25-75%')
+            ax.plot(x, quantiles[2], color='black', linewidth=1.5, label=f'{label} Median', **(args[0] if args else {}))
+            ax.set_title(label)
+            ax.grid(True)
+            ax.tick_params(axis='both', which='major', labelsize=8)
+
+
+    # Add legends to other subplots (only once per subplot)
+    for ax in axs:
+        handles, labels = ax.get_legend_handles_labels()
+        if handles:
+            ax.legend(handles, labels, fontsize=8)
+
+    plt.tight_layout()
+    plt.savefig(save_path)
+    plt.close()
+
 
 if __name__ == '__main__':
   filename = run_ensemble_and_generate_plot("Ussana")
