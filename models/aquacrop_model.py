@@ -209,7 +209,7 @@ def run_ensemble_and_generate_plot(location: str, force: bool = False) -> tuple[
     # Inizializza il modello della coltura
     local_wheat = Crop('Wheat',
         planting_date='12/03',
-        harvest_date='04/22',
+        harvest_date=f'{raccolta.month:02d}/{raccolta.day:02d}',
                     Zmin=0.05)
 
     z=np.linspace(0.05,1.15,12)
