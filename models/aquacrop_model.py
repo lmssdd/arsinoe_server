@@ -209,7 +209,7 @@ def run_ensemble_and_generate_plot(location: str, force: bool = False) -> tuple[
     # Inizializza il modello della coltura
     local_wheat = Crop('Wheat',
         planting_date='12/03',
-        harvest_date=f'{raccolta.month:02d}/{raccolta.day:02d}',
+        harvest_date='07/22',
                     Zmin=0.05)
 
     z=np.linspace(0.05,1.15,12)
@@ -312,7 +312,7 @@ def plot_wprof_out(models, name, save_path, forecast_days=30):
     fig, axs = plt.subplots(4, 3, figsize=(12, 9))
     axs = axs.flatten()
     for i in range(1, 13):
-        th_all = np.array([getattr(models[m]._outputs.water_storage[-forecast_days:], f"th{i}") for m in range(31)])
+        th_all = np.array([getattr(models[m]._outputs.water_storage[-forecast_days:-forecast_days+15], f"th{i}") for m in range(31)])
         th_all[th_all == 0] = np.nan
         q10, q25, q50, q75, q90 = np.percentile(th_all, [10, 25, 50, 75, 90], axis=0)
         x = np.arange(th_all.shape[1])
