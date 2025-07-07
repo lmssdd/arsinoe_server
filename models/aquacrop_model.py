@@ -103,7 +103,7 @@ def aquacrop_run_ussana(fname=aquacrop_fname):
 
 
 def run_ensemble_and_generate_plot(location: str, force: bool = False) -> tuple[str, str]:
-    data_dir = './data'
+    data_dir = 'static/data'
 
     if location == "Ussana":
         lat, lon = 39.41043974519125, 9.09101345584236
