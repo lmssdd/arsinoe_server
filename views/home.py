@@ -1,28 +1,24 @@
 import fastapi
 from starlette.requests import Request
 from starlette.templating import Jinja2Templates
-from fastapi.responses import StreamingResponse, HTMLResponse, JSONResponse, FileResponse
-from fastapi import Form, File, UploadFile, HTTPException, Query
-import requests
-from io import BytesIO
-from PIL import Image
+from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
+from fastapi import Form, File, UploadFile, Query
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from plotly.utils import PlotlyJSONEncoder
 from plotly.express.colors import sample_colorscale
 import json
 import pandas as pd
-from sklearn.preprocessing import minmax_scale
-from datetime import datetime
+import numpy as np
+from datetime import datetime, timedelta
 import os
-import traceback
+import glob
+import re
 
 from models.aquacrop_model import aquacrop_run_ussana, aquacrop_run_benatzu, run_ensemble_and_generate_plot
-from models.mistral_model import get_total_dataframe
 
 import openmeteo_requests
 from openmeteo_sdk.Variable import Variable
-from openmeteo_sdk.Aggregation import Aggregation
 import requests_cache
 from retry_requests import retry
 
@@ -30,9 +26,18 @@ import folium
 import geopandas as gpd
 import rasterio
 import matplotlib.pyplot as plt
-import matplotlib.cm
 import matplotlib.colors as mcolors
 from rasterstats import zonal_stats
+from rasterio.mask import mask
+from shapely.geometry import mapping
+from pathlib import Path
+
+from rasterio.transform import from_bounds
+from sentinelhub import (
+    SHConfig, BBox, CRS, DataCollection, SentinelHubCatalog,
+    SentinelHubRequest, MimeType, bbox_to_dimensions, filter_times
+)
+
 
 templates = Jinja2Templates('templates')
 router = fastapi.APIRouter()
@@ -53,72 +58,6 @@ async def index(request: Request):
 def favicon():
     return fastapi.responses.RedirectResponse(url='https://arsinoe-project.eu/securstorage/2022/02/favicon-32.png')
 
-#@router.get('/loaderio-5b231ba7b420bdcc2e5b2aaf785f7201.txt', response_class=PlainTextResponse, include_in_schema=False)
-#def loaderio():
-#    return "loaderio-5b231ba7b420bdcc2e5b2aaf785f7201"
-
-@router.get("/ecmwf_forecast/{station}", include_in_schema=False)
-async def ecmwf_forecast(
-    station: str
-    ):
-    # URL of the JSON endpoint
-    if station == 'Ussana':
-        lat = 39.3919
-        lon = 9.0775
-    else:
-        lat = 39.3919
-        lon = 9.0775
-    
-    json_url = f"https://charts.ecmwf.int/opencharts-api/v1/products/opencharts_meteogram/?epsgram=classical_15d_with_climate&station_name={station}&lat={lat}&lon={lon}"
-
-    try:
-        # Fetch the JSON data
-        response = requests.get(json_url)
-        response.raise_for_status()
-        json_data = response.json()
-        
-        # Extract the PNG URL from the JSON structure
-        png_url = json_data.get("data", {}).get("link", {}).get("href")
-        if not png_url:
-            raise ValueError("No 'href' field found in the JSON under 'data -> link'.")
-        
-        # Fetch the PNG image
-        image_response = requests.get(png_url)
-        image_response.raise_for_status()
-        image = Image.open(BytesIO(image_response.content))
-        
-        # Define the bounding boxes for the two portions (adjust as needed)
-        # Portion 1
-        crop_box1 = (0, 200, image.width, 316)  # Full width, adjust height
-        cropped_image1 = image.crop(crop_box1)
-        
-        # Portion 2
-        crop_box2 = (0, 450, image.width, 700)  # Full width, adjust height #684-700
-        cropped_image2 = image.crop(crop_box2)
-        
-        # Create a new image with combined height
-        combined_height = cropped_image1.height + cropped_image2.height
-        combined_image = Image.new("RGB", (image.width, combined_height))
-        
-        # Paste the two cropped portions into the new image
-        combined_image.paste(cropped_image1, (0, 0))  # First crop at the top
-        combined_image.paste(cropped_image2, (0, cropped_image1.height))  # Second crop below the first
-        
-        buf = BytesIO()
-        combined_image.save(buf, format="PNG")
-        buf.seek(0)
-        
-        return StreamingResponse(buf, media_type="image/png")
-    
-    except requests.exceptions.RequestException as e:
-        print(f"Error fetching data: {e}")
-        return None
-    except ValueError as e:
-        print(e)
-        return None
-    except Exception as e:
-        print(f"An error occurred: {e}")
-        return None
 
 @router.get("/gfs_forecast/{latitude}/{longitude}", include_in_schema=False)
 async def gfs_forecast(latitude: float, longitude: float):
@@ -147,22 +86,17 @@ async def gfs_forecast(latitude: float, longitude: float):
     print(f"Timezone {response.Timezone()} {response.TimezoneAbbreviation()}")
     print(f"Timezone difference to GMT+0 {response.UtcOffsetSeconds()} s")
 
-
     # Process hourly data
     hourly = response.Hourly()
     hourly_variables = list(map(lambda i: hourly.Variables(i), range(0, hourly.VariablesLength())))
 
     hourly_temperature_2m = filter(lambda x: x.Variable() == Variable.temperature and x.Altitude() == 2, hourly_variables)
 
-
     hourly_precipitation = filter(lambda x: x.Variable() == Variable.precipitation, hourly_variables)
-
 
     hourly_et0_fao_evapotranspiration = filter(lambda x: x.Variable() == Variable.et0_fao_evapotranspiration, hourly_variables)
 
-
     hourly_wind_speed_10m = filter(lambda x: x.Variable() == Variable.wind_speed and x.Altitude() == 10, hourly_variables)
-
 
     hourly_data = {"date": pd.date_range(
         start=pd.to_datetime(hourly.Time(), unit="s", utc=True),
@@ -176,21 +110,17 @@ async def gfs_forecast(latitude: float, longitude: float):
         member = variable.EnsembleMember()
         hourly_data[f"temperature_2m_M{member:02d}"] = variable.ValuesAsNumpy()
 
-
     for variable in hourly_precipitation:
         member = variable.EnsembleMember()
         hourly_data[f"precipitation_M{member:02d}"] = variable.ValuesAsNumpy()
-
 
     for variable in hourly_et0_fao_evapotranspiration:
         member = variable.EnsembleMember()
         hourly_data[f"et0_fao_evapotranspiration_M{member:02d}"] = variable.ValuesAsNumpy()
 
-
     for variable in hourly_wind_speed_10m:
         member = variable.EnsembleMember()
         hourly_data[f"wind_speed_10m_M{member:02d}"] = variable.ValuesAsNumpy()
-
 
     hourly_dataframe = pd.DataFrame(data = hourly_data)
 
@@ -318,78 +248,516 @@ async def gfs_forecast(latitude: float, longitude: float):
 
     return json.loads(plot_json)
 
-    
-@router.get("/prec_plot/{station}", include_in_schema=False)
-def mistral_p(
-    station: str
-    ):
+@router.get("/ndvi_map", include_in_schema=False, response_class=HTMLResponse)
+def prepare_map():
+    shapefile_path = "static/shapefiles/parcelle2022_2023.shp"
+    ndvi_dir = "static/geotiff_ndvi"
 
-    # Create a figure with secondary Y-axis
-    fig = make_subplots(specs=[[{"secondary_y": True}]])
+    if not os.path.exists(shapefile_path):
+        raise FileNotFoundError(f"Shapefile non trovato: {shapefile_path}")
 
-    df_prec = get_total_dataframe()
-    
-    col = 'darkblue' #aqua, aquamarine, azure, cadetblue, darkblue
-    lab = 'Prec.'
-    s = df_prec['Prec']
-    s = s.dropna()
-    fig.add_trace(
-        go.Scatter(x=s.dropna().index, y=s.dropna(), 
-                   name=lab, mode='lines+markers', line_color=col, showlegend=False
-                  ),
-        secondary_y=False
+    # Trova il file NDVI più recente
+    ndvi_files = sorted([
+        os.path.join(ndvi_dir, f)
+        for f in os.listdir(ndvi_dir)
+        if f.endswith(".tif")
+    ])
+    if not ndvi_files:
+        raise FileNotFoundError(f"Nessun file NDVI trovato in {ndvi_dir}")
+    geotiff_path = ndvi_files[-1]  # ultimo = più recente per ordinamento alfabetico
+
+    # Carica shapefile e raster
+    polygons = gpd.read_file(shapefile_path).to_crs("EPSG:4326")
+    with rasterio.open(geotiff_path) as src:
+        array = src.read(1)
+        affine = src.transform
+        no_data = src.nodata
+        bounds = src.bounds
+        metadata = src.tags()
+
+    stats = zonal_stats(
+        polygons,
+        array,
+        affine=affine,
+        nodata=no_data,
+        stats=["min", "max", "mean", "std"],
+    )
+
+    polygons["min_ndvi"] = [s["min"] for s in stats]
+    polygons["max_ndvi"] = [s["max"] for s in stats]
+    polygons["mean_ndvi"] = [s["mean"] for s in stats]
+    polygons["std_ndvi"] = [s["std"] for s in stats]
+
+    # Raster -> RGB
+    valid_data = array[array != no_data]
+    raster_min, raster_max = valid_data.min(), valid_data.max()
+    raster_normalized = np.clip((array - raster_min) / (raster_max - raster_min), 0, 1)
+    raster_image = plt.cm.viridis(raster_normalized)
+    raster_image = (raster_image[:, :, :3] * 255).astype("uint8")
+    raster_bounds = [[bounds.bottom, bounds.left], [bounds.top, bounds.right]]
+
+    centroids = polygons.geometry.centroid
+    center = [centroids.y.mean(), centroids.x.mean()]
+    ndvi_map = folium.Map(location=center, zoom_start=14)
+
+    folium.raster_layers.ImageOverlay(
+        image=raster_image,
+        bounds=raster_bounds,
+        opacity=0.7,
+        interactive=True,
+    ).add_to(ndvi_map)
+
+    # Colora i poligoni
+    cmap = plt.get_cmap("viridis")
+    def get_style(feature):
+        ndvi_value = feature["properties"].get("mean_ndvi", raster_min)
+        normalized_ndvi = np.clip((ndvi_value - raster_min) / (raster_max - raster_min), 0, 1)
+        color = mcolors.to_hex(cmap(normalized_ndvi))
+        return {
+            "color": "black",
+            "weight": 0.7,
+            "fillColor": color,
+            "fillOpacity": 0.6,
+        }
+
+    folium.GeoJson(
+        polygons.to_json(),
+        style_function=get_style,
+        tooltip=folium.GeoJsonTooltip(
+            fields=["LOCALITà", "TESI", "mean_ndvi", "min_ndvi", "max_ndvi", "std_ndvi"],
+            aliases=["Località:", "Tesi:", "NDVI medio:", "NDVI min:", "NDVI max:", "Dev std NDVI:"],
+            localize=True,
+            labels=True,
+            sticky=True
         )
-    
-    colors_ = range(12//4)
-    benatzu_colors = sample_colorscale('Blugrn', minmax_scale(colors_))
-    ussana_colors = sample_colorscale('Redor', minmax_scale(colors_))
-    
-    for idx in range(24):
-        field = f'field_{idx}'
-        if (idx // 4) == 0 :
-            col = benatzu_colors[idx // 4]
-            lab = f'B test {idx % 4 +1}'
-        if (idx // 4) == 1 :
-            col = benatzu_colors[idx // 4]
-            lab = f'B 50% {idx % 4 +1}'
-        if (idx // 4) == 2 :
-            col = benatzu_colors[idx // 4]
-            lab = f'B 100% {idx % 4 +1}'
-        if (idx // 4) == 3 :
-            col = ussana_colors[idx // 4 - 3]
-            lab = f'U test {idx % 4 +1}'
-        if (idx // 4) == 4 :
-            col = ussana_colors[idx // 4 - 3]
-            lab = f'U 50% {idx % 4 +1}'
-        if (idx // 4) == 5 :
-            col = ussana_colors[idx // 4 - 3]
-            lab = f'U 100% {idx % 4 +1}'
-    
-        s = df_prec[field]
-        s = s.dropna()
-        fig.add_trace(
-            go.Scatter(x=s.dropna().index, y=s.dropna(), 
-                       name=lab, mode='lines+markers', line_color=col, showlegend=False
-                      ),
-            secondary_y=True
+    ).add_to(ndvi_map)
+
+    map_html = ndvi_map._repr_html_()
+
+    # Colorbar HTML
+    n_ticks = 8
+    tick_vals = np.linspace(raster_min, raster_max, n_ticks)
+    colors = ['#440154', '#482878', '#3e4989', '#31688e', '#26828e',
+            '#1f9e89', '#35b779', '#6ece58', '#b5de2b', '#fde725']
+    gradient_css = ", ".join(colors)
+
+    colorbar_vertical = f"""
+    <div style="
+        position: absolute;
+        top: 80px;
+        right: 20px;
+        width: 100px;
+        height: 600px;
+        background-color: white;
+        padding: 10px 8px 10px 10px;
+        border: 1px solid #ccc;
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        z-index: 9999;
+    ">
+        <div style="
+            width: 30px;
+            height: 100%;
+            background: linear-gradient(to top, {gradient_css});
+            border: 1px solid #ccc;
+        "></div>
+        <div style="
+            margin-left: 10px;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            font-size: 0.8rem;
+        ">
+    """
+    for val in reversed(tick_vals):
+        colorbar_vertical += f"<div style='text-align: left;'>{val:.2f}</div>"
+    colorbar_vertical += "</div></div>"
+
+    # Metadata box HTML
+    keys = ["AREA_NAME", "SENSOR_TYPE", "DESCRIPTION", "ACQUISITION_DATETIME", "PROCESSING_VERSION"]
+    metadata_html = """
+    <div class="box" style="margin-top: 1.5rem;">
+      <h4 class="title is-5">NDVI Metadata</h4>
+      <div class="content">
+        <dl>
+    """
+    for key in keys:
+        if key in metadata:
+            metadata_html += f"<dt>{key.replace('_', ' ').title()}</dt><dd>{metadata[key]}</dd>"
+    metadata_html += """
+        </dl>
+      </div>
+    </div>
+    """
+
+    return map_html + colorbar_vertical + metadata_html
+
+
+def download_and_save_new_ndvi_scl(
+    client_id,
+    client_secret,
+    bbox_coords,
+    time_interval,
+    ndvi_dir,
+    scl_dir,
+    resolution=10,
+    max_cloud_cover=100
+):
+    os.makedirs(ndvi_dir, exist_ok=True)
+    os.makedirs(scl_dir, exist_ok=True)
+
+    config = SHConfig()
+    config.sh_client_id = client_id
+    config.sh_client_secret = client_secret
+    config.sh_token_url = "https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token"
+    config.sh_base_url = "https://sh.dataspace.copernicus.eu"
+
+    bbox = BBox(bbox=bbox_coords, crs=CRS.WGS84)
+    size = bbox_to_dimensions(bbox, resolution=resolution)
+
+    catalog = SentinelHubCatalog(config=config)
+    search_iterator = catalog.search(
+        DataCollection.SENTINEL2_L2A,
+        bbox=bbox,
+        time=time_interval,
+        filter=f"eo:cloud_cover <= {max_cloud_cover}",
+        fields={"include": ["id", "properties.datetime", "properties.eo:cloud_cover"], "exclude": []},
+    )
+
+    all_timestamps = search_iterator.get_timestamps()
+    time_difference = timedelta(hours=1)
+    unique_acquisitions = filter_times(all_timestamps, time_difference)
+
+    evalscript_ndvi = """
+    //VERSION=3
+    function setup() {
+        return {
+            input: ["B04", "B08", "dataMask"],
+            output: [
+                { id: "index", bands: 1, sampleType: "FLOAT32" },
+                { id: "dataMask", bands: 1 }
+            ]
+        };
+    }
+    function evaluatePixel(samples) {
+        let ndvi = index(samples.B08, samples.B04);
+        let masked = samples.dataMask === 1 ? ndvi : NaN;
+        return {
+            index: [masked],
+            dataMask: [samples.dataMask]
+        };
+    }"""
+
+    evalscript_scl = """
+    //VERSION=3
+    function setup() {
+        return {
+            input: ["SCL"],
+            output: { bands: 1, sampleType: "UINT8" }
+        };
+    }
+    function evaluatePixel(samples) {
+        return [samples.SCL];
+    }"""
+
+    for timestamp in unique_acquisitions:
+        ts_str = timestamp.strftime("%Y%m%dT%H%M%S")
+        out_path_ndvi = os.path.join(ndvi_dir, f"ndvi_{ts_str}.tif")
+        out_path_scl = os.path.join(scl_dir, f"scl_{ts_str}.tif")
+
+        # Salta se entrambi i file esistono
+        if os.path.exists(out_path_ndvi) and os.path.exists(out_path_scl):
+            continue
+
+        # === NDVI ===
+        request_ndvi = SentinelHubRequest(
+            evalscript=evalscript_ndvi,
+            input_data=[
+                SentinelHubRequest.input_data(
+                    data_collection=DataCollection.SENTINEL2_L2A.define_from("s2l2a", service_url=config.sh_base_url),
+                    time_interval=(timestamp - time_difference, timestamp + time_difference)
+                )
+            ],
+            responses=[SentinelHubRequest.output_response("index", MimeType.TIFF)],
+            bbox=bbox,
+            size=size,
+            config=config,
+        )
+        array_ndvi = request_ndvi.get_data()[0]
+        transform = from_bounds(*bbox_coords, width=size[0], height=size[1])
+        metadata_ndvi = {
+            "driver": "GTiff",
+            "dtype": rasterio.float32,
+            "count": 1,
+            "width": array_ndvi.shape[1],
+            "height": array_ndvi.shape[0],
+            "crs": "EPSG:4326",
+            "transform": transform,
+            "nodata": np.nan
+        }
+        with rasterio.open(out_path_ndvi, "w", **metadata_ndvi) as dst:
+            dst.write(array_ndvi.astype(np.float32), 1)
+            dst.update_tags(
+                ACQUISITION_DATETIME=timestamp.isoformat(),
+                SENSOR_TYPE="Sentinel-2 L2A",
+                AREA_NAME=f"{bbox_coords}",
+                DESCRIPTION="NDVI derived from Sentinel-2 (B08/B04)",
+                PROCESSING_VERSION="1.0",
+                RESOLUTION=str(resolution),
+                CLOUD_COVER=str(max_cloud_cover)
             )
+
+        # === SCL ===
+        request_scl = SentinelHubRequest(
+            evalscript=evalscript_scl,
+            input_data=[
+                SentinelHubRequest.input_data(
+                    data_collection=DataCollection.SENTINEL2_L2A.define_from("s2l2a", service_url=config.sh_base_url),
+                    time_interval=(timestamp - time_difference, timestamp + time_difference)
+                )
+            ],
+            responses=[SentinelHubRequest.output_response("default", MimeType.TIFF)],
+            bbox=bbox,
+            size=size,
+            config=config,
+        )
+        array_scl = request_scl.get_data()[0]
+        metadata_scl = {
+            "driver": "GTiff",
+            "dtype": rasterio.uint8,
+            "count": 1,
+            "width": array_scl.shape[1],
+            "height": array_scl.shape[0],
+            "crs": "EPSG:4326",
+            "transform": transform,
+            "nodata": None
+        }
+        with rasterio.open(out_path_scl, "w", **metadata_scl) as dst:
+            dst.write(array_scl.astype(np.uint8), 1)
+            dst.update_tags(
+                ACQUISITION_DATETIME=timestamp.isoformat(),
+                DESCRIPTION="Scene Classification Layer (SCL) from Sentinel-2",
+                PROCESSING_VERSION="1.0"
+            )
+
+        print(f"✔ Saved NDVI: {out_path_ndvi}")
+        print(f"✔ Saved SCL:  {out_path_scl}")
+
+
+def extract_ndvi_series_grouped_by_treatment_valid_classes(
+    shapefile_path,
+    ndvi_dir,
+    scl_dir,
+    location_column="LOCALITà",
+    treatment_column="TESI",
+    valid_classes={4, 5}
+):
+    if not os.path.exists(shapefile_path):
+        raise FileNotFoundError(f"Shapefile non trovato: {shapefile_path}")
     
-    # Add figure title
+    polygons = gpd.read_file(shapefile_path).to_crs("EPSG:4326")
+    if location_column not in polygons.columns or treatment_column not in polygons.columns:
+        raise ValueError("Colonne richieste non trovate nello shapefile")
+
+    polygons["GROUP"] = (
+        polygons[location_column].astype(str).str.upper().str.strip() + "_" +
+        polygons[treatment_column].astype(str).str.strip()
+    )
+
+    ndvi_files = sorted([f for f in os.listdir(ndvi_dir) if f.endswith(".tif")])
+    scl_files = sorted([f for f in os.listdir(scl_dir) if f.endswith(".tif")])
+
+    if len(ndvi_files) != len(scl_files):
+        raise ValueError("Numero di file NDVI e SCL non corrisponde")
+
+    records = []
+    for ndvi_file, scl_file in zip(ndvi_files, scl_files):
+        ndvi_path = os.path.join(ndvi_dir, ndvi_file)
+        scl_path = os.path.join(scl_dir, scl_file)
+
+        with rasterio.open(ndvi_path) as ndvi_src, rasterio.open(scl_path) as scl_src:
+            metadata = ndvi_src.tags()
+            raw_date = metadata.get("ACQUISITION_DATETIME", None)
+            label = None
+            if raw_date:
+                try:
+                    label = datetime.fromisoformat(raw_date)
+                except Exception:
+                    pass
+            if label is None:
+                try:
+                    label = pd.to_datetime(Path(ndvi_file).stem, errors="coerce")
+                except Exception:
+                    continue
+            if label is None or pd.isna(label):
+                continue
+
+            group_values = {}
+            for idx, row in polygons.iterrows():
+                group = row["GROUP"]
+                geom = [mapping(row.geometry)]
+                try:
+                    ndvi_masked, _ = mask(ndvi_src, geom, crop=True)
+                    scl_masked, _ = mask(scl_src, geom, crop=True)
+                except Exception:
+                    continue
+
+                ndvi_vals = ndvi_masked[0]
+                scl_vals = scl_masked[0]
+
+                valid_mask = (~np.isnan(ndvi_vals)) & (np.isin(scl_vals, list(valid_classes)))
+                if np.any(valid_mask):
+                    mean_val = float(np.nanmean(ndvi_vals[valid_mask]))
+                else:
+                    mean_val = np.nan
+
+                if group not in group_values:
+                    group_values[group] = []
+                group_values[group].append(mean_val)
+
+            aggregated = {
+                g: np.nanmean(vals) if len(vals) > 0 and not all(np.isnan(vals)) else np.nan
+                for g, vals in group_values.items()
+            }
+            records.append((label, aggregated))
+
+    df = pd.DataFrame.from_records(
+        [r[1] for r in records],
+        index=[r[0] for r in records]
+    )
+    df.index.name = "timestamp"
+    df = df.sort_index()
+    return df
+
+@router.get("/precipitation_plot/{latitude}/{longitude}", include_in_schema=False)
+async def precipitation(latitude: float, longitude: float):
+
+    # === Precipitation from Open-Meteo ===
+    cache_session = requests_cache.CachedSession('.cache', expire_after=-1)
+    retry_session = retry(cache_session, retries=5, backoff_factor=0.2)
+    openmeteo = openmeteo_requests.Client(session=retry_session)
+
+    today = datetime.today().strftime("%Y-%m-%d")
+
+    start_date = "2022-10-01"
+    end_date = today
+    time_interval = (start_date, end_date)
+
+    url = "https://archive-api.open-meteo.com/v1/archive"
+    params = {
+        "latitude": latitude,
+        "longitude": longitude,
+        "start_date": start_date,
+        "end_date": today,
+        "daily": "precipitation_sum",
+        "models": "best_match"
+    }
+    responses = openmeteo.weather_api(url, params=params)
+    response = responses[0]
+    daily = response.Daily()
+    daily_precipitation_sum = daily.Variables(0).ValuesAsNumpy()
+    daily_data = {
+        "date": pd.date_range(
+            start=pd.to_datetime(daily.Time(), unit="s", utc=True),
+            end=pd.to_datetime(daily.TimeEnd(), unit="s", utc=True),
+            freq=pd.Timedelta(seconds=daily.Interval()),
+            inclusive="left"
+        ),
+        "precipitation_sum": daily_precipitation_sum
+    }
+    daily_dataframe = pd.DataFrame(data=daily_data).set_index('date')
+
+    # === Download dinamico NDVI/SCL ===
+    bbox_coords = bbox_coords=(9.0747, 39.4022, 9.1186, 39.4361)
+    ndvi_dir = "static/geotiff_ndvi"
+    scl_dir = "static/geotiff_scl"
+    
+    download_and_save_new_ndvi_scl(
+        #client_id=os.getenv("SH_CLIENT_ID"),
+        #client_secret=os.getenv("SH_CLIENT_SECRET"),
+        client_id="sh-031078ea-3866-4001-8550-5e8e942d7c78",
+        client_secret="sT1q2RdKNfMwAGtlA2mebNLW23CxcocX",
+        bbox_coords=bbox_coords,
+        time_interval=time_interval,
+        ndvi_dir=ndvi_dir,
+        scl_dir=scl_dir, 
+        resolution=10,
+        max_cloud_cover=40  # puoi alzarlo o abbassarlo
+    )
+
+    # === NDVI data extraction ===
+    shapefile_path = "static/shapefiles/parcelle2022_2023.shp"
+    df_ndvi = extract_ndvi_series_grouped_by_treatment_valid_classes(
+        shapefile_path=shapefile_path,
+        ndvi_dir=ndvi_dir,
+        scl_dir=scl_dir
+    )
+
+    group_names = [
+        ("BENATZU_TEST", "Benatzu Test", 'Blugrn'),
+        ("BENATZU_50", "Benatzu 50%", 'Blugrn'),
+        ("BENATZU_100", "Benatzu 100%", 'Blugrn'),
+        ("USSANA_TEST", "Ussana Test", 'Redor'),
+        ("USSANA_50", "Ussana 50%", 'Redor'),
+        ("USSANA_100", "Ussana 100%", 'Redor')
+    ]
+
+    # === DIAGNOSTICA ===
+    #print(">>> NDVI DataFrame shape:", df_ndvi.shape)
+    #print(">>> NDVI columns:", df_ndvi.columns.tolist())
+    #print(">>> NDVI head:")
+    #print(df_ndvi.head())
+
+    #expected_groups = [g[0] for g in group_names]
+    #missing = [g for g in expected_groups if g not in df_ndvi.columns]
+    #print(">>> Missing groups:", missing)
+    #print(">>> NDVI non-NaN counts:")
+    #print(df_ndvi.notna().sum())
+
+    # === Plot ===
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
+    fig.add_trace(
+        go.Scatter(
+            x=daily_dataframe.index,
+            y=daily_dataframe["precipitation_sum"],
+            name="Precipitation",
+            mode="lines+markers",
+            line_color="darkblue"
+        ),
+        secondary_y=False
+    )
+
+    for i, (group_col, label, colorscale) in enumerate(group_names):
+        if group_col not in df_ndvi.columns:
+            continue
+        s = df_ndvi[group_col].dropna()
+        if s.empty:
+            continue
+        color = sample_colorscale(colorscale, [i / 6])[0]
+        fig.add_trace(
+            go.Scatter(
+                x=s.index,
+                y=s,
+                name=label,
+                mode='lines+markers',
+                line_color=color
+            ),
+            secondary_y=True
+    )
+
     fig.update_layout(
         title="Precipitation and NDVI",
         height=800
     )
-    
-    # Set x-axis title
-    fig.update_xaxes(title_text="date")
-    
-    # Set y-axes titles
-    fig.update_yaxes(title_text="precipitation [mm H2O]", secondary_y=False)
+    fig.update_xaxes(title_text="Date")
+    fig.update_yaxes(title_text="Precipitation [mm H₂O]", secondary_y=False)
     fig.update_yaxes(title_text="NDVI [-]", secondary_y=True)
-    plot_json = json.dumps(fig, cls=PlotlyJSONEncoder)
 
-    return json.loads(plot_json)
-    
+    return json.loads(json.dumps(fig, cls=PlotlyJSONEncoder))
+
+
 @router.post("/simulation", response_class=HTMLResponse)
 async def process_file(
     request: Request,
@@ -403,7 +771,7 @@ async def process_file(
 
     # Perform simulation
     if site == "Ussana":
-        print(file_path)
+        #print(file_path)
         model = aquacrop_run_ussana(file_path)
     elif site == "Benatzu":
         model = aquacrop_run_benatzu(file_path)
@@ -438,107 +806,13 @@ async def process_file(
         "download_url": download_url
     })
 
+
 @router.get("/download/{filename}")
 async def download_file(filename: str):
     file_path = os.path.join("uploads", filename)
     if os.path.exists(file_path):
         return FileResponse(file_path, media_type="application/json", filename=filename)
     return JSONResponse(content={"error": "File not found"}, status_code=404)
-
-@router.get("/ndvi_map", include_in_schema=False, response_class=HTMLResponse)
-async def prepare_map():
-    # Percorsi ai file
-    shapefile_path = "static/shapefiles/parcelle2022_2023.shp"
-    geotiff_path = "static/geotiff/ndvi_geotiff.tif"
-
-    # Carica i poligoni
-    polygons = gpd.read_file(shapefile_path)
-    polygons = polygons.to_crs("EPSG:4326")  # Assicura che sia in EPSG:4326
-
-    # Calcola le statistiche NDVI per ciascun poligono
-    with rasterio.open(geotiff_path) as src:
-        affine = src.transform
-        array = src.read(1)  # NDVI values
-        no_data = src.nodata
-
-    stats = zonal_stats(
-        polygons,
-        array,
-        affine=affine,
-        nodata=no_data,
-        stats=["min", "max", "mean", "std"],
-    )
-
-    # Aggiungi le statistiche ai poligoni
-    polygons["min_ndvi"] = [stat["min"] for stat in stats]
-    polygons["max_ndvi"] = [stat["max"] for stat in stats]
-    polygons["mean_ndvi"] = [stat["mean"] for stat in stats]
-    polygons["std_ndvi"] = [stat["std"] for stat in stats]
-
-    # Load NDVI raster map
-    with rasterio.open(geotiff_path) as src:
-        raster_data = src.read(1)
-        bounds = src.bounds
-
-    # Normalize raster for visualization
-    raster_min, raster_max = raster_data.min(), raster_data.max()
-    raster_normalized = (raster_data - raster_min) / (raster_max - raster_min)
-    raster_image = matplotlib.cm.viridis(raster_normalized)
-    raster_image = (raster_image[:, :, :3] * 255).astype("uint8")
-
-    # Extract raster geographic bounds
-    raster_bounds = [[bounds.bottom, bounds.left], [bounds.top, bounds.right]]
-
-    # Create map centered on the polygon domain
-    projected_polygons = polygons.to_crs(epsg=3857)  # Convert to projected CRS for centroids
-    centroids = projected_polygons.geometry.centroid.to_crs(epsg=4326)
-    center = [centroids.y.mean(), centroids.x.mean()]
-    ndvi_map = folium.Map(location=center, zoom_start=14)
-
-    # Add raster map as background
-    folium.raster_layers.ImageOverlay(
-        image=raster_image,
-        bounds=raster_bounds,
-        opacity=0.7,
-        interactive=True,
-    ).add_to(ndvi_map)
-
-    # Convert the GeoDataFrame to GeoJSON (keeps all properties)
-    geojson_data = polygons.to_json()
-
-    # Define colormap for NDVI values based on raster range
-    norm = mcolors.Normalize(vmin=raster_min, vmax=raster_max)
-    cmap = plt.get_cmap("viridis")
-
-    def get_style(feature):
-        """Style function to dynamically set fillColor based on NDVI mean."""
-        ndvi_value = feature["properties"].get("mean_ndvi", raster_min)  # Default to raster_min if missing
-        normalized_ndvi = (ndvi_value - raster_min) / (raster_max - raster_min)
-        normalized_ndvi = max(0, min(1, normalized_ndvi))  # Ensure within [0,1]
-        ndvi_color = mcolors.to_hex(cmap(normalized_ndvi))  # Convert to hex
-
-        return {
-            "color": "black",  # Keep a thin black border
-            "weight": 0.7,     # Reduce border thickness
-            "fillColor": ndvi_color,  # Use the colormap for fill
-            "fillOpacity": 0.6,  # Semi-transparent fill
-        }
-
-    # Add polygons as GeoJSON (preserving properties)
-    folium.GeoJson(
-        geojson_data,  # Use the whole GeoJSON object
-        style_function=get_style,
-        tooltip=folium.GeoJsonTooltip(fields=["LOCALITà", "TESI", "mean_ndvi",  "min_ndvi",  "max_ndvi",  "std_ndvi"], 
-                                      aliases=["Località:", "Tesi:", "NDVI Mean:", "NDVI Min:", "NDVI Max:", "NDVI Std:"], 
-                                      localize=True,
-                                      labels=True,
-                                      sticky=True
-                                      )
-    ).add_to(ndvi_map)
-
-    # Render the map to HTML string
-    map_html = ndvi_map._repr_html_()
-    return map_html
 
 @router.post("/upload/")
 async def upload_file(file: UploadFile = File(...)):

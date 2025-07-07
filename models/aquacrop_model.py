@@ -174,8 +174,8 @@ def run_ensemble_and_generate_plot(location: str, force: bool = False) -> tuple[
             df2_comune = df_storico.loc[overlapping_dates]
             ENS_av=df1_comune.mean()
             ERA5_av=df2_comune.mean()
-            print(ENS_av)
-            print(ERA5_av)
+            #print(ENS_av)
+            #print(ERA5_av)
         if(debias):
             df_daily['temperature_2m_max'] += ERA5_av['temperature_2m_max']-ENS_av['temperature_2m_max']
             df_daily['temperature_2m_min'] += ERA5_av['temperature_2m_min']-ENS_av['temperature_2m_min']
@@ -249,8 +249,8 @@ def run_ensemble_and_generate_plot(location: str, force: bool = False) -> tuple[
 
     water_path = os.path.join("static/png", f"water_profile_quantiles_{location}_{today_str}.png")
     outputs_path = os.path.join("static/png", f"model_outputs_{location}_{today_str}.png")
-    if os.path.exists(water_path) and os.path.exists(outputs_path) and not force:
-        return water_path, outputs_path
+    #if os.path.exists(water_path) and os.path.exists(outputs_path) and not force:
+    #    return water_path, outputs_path
     
     plot_wprof_out(models, location, water_path)
     plot_ensemble_quantiles(models, name, outputs_path)
@@ -309,11 +309,15 @@ def reorganize_gens_json(data):
 
 
 def plot_wprof_out(models, name, save_path, forecast_days=30):
+    #print('PLOT__________________', forecast_days)
     fig, axs = plt.subplots(4, 3, figsize=(12, 9))
     axs = axs.flatten()
     for i in range(1, 13):
-        th_all = np.array([getattr(models[m]._outputs.water_storage[-forecast_days:-forecast_days+15], f"th{i}") for m in range(31)])
+        #th_all = np.array([getattr(models[m]._outputs.water_storage[-forecast_days:-forecast_days+15], f"th{i}") for m in range(31)])
+        th_all = np.array([getattr(models[m]._outputs.water_storage[:], f"th{i}") for m in range(31)])
         th_all[th_all == 0] = np.nan
+        #print(th_all.shape)
+        #print(th_all)
         q10, q25, q50, q75, q90 = np.percentile(th_all, [10, 25, 50, 75, 90], axis=0)
         x = np.arange(th_all.shape[1])
         axs[i - 1].fill_between(x, q10, q90, color='gray', alpha=0.2)
@@ -375,7 +379,7 @@ def plot_ensemble_quantiles(models, name, save_path, drop_days=30):
         outputs = models[m]._outputs.crop_growth
         fluxes = models[m]._outputs.water_flux
         storage = models[m]._outputs.water_storage
-        print(outputs.columns)
+        #print(outputs.columns)
         ensemble_data['gdd'].append(outputs.gdd[-drop_days:-1])
         ensemble_data['gdd_cum'].append(outputs.gdd_cum[-drop_days:-1])
         ensemble_data['z_root'].append(outputs.z_root[:-1])

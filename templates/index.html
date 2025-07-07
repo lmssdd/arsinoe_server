@@ -175,7 +175,7 @@
     }
 
     function loadPrecPlot() {
-      return fetch("/prec_plot/Ussana")
+      return fetch("/precipitation_plot/39.415/9.1")
         .then(response => response.json())
         .then(plotlyData => {
           Plotly.newPlot("Precipitation", plotlyData.data, plotlyData.layout);
