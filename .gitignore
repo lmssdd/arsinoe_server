@@ -160,7 +160,9 @@ cython_debug/
 #.idea/
 
 # GEOTIIFF files
-*.tif
+static/geotiff_ndvi/
+static/geotiff_scl/
+
 
 # GENS files
-*.csv
+static/data/
