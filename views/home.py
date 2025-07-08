@@ -144,7 +144,8 @@ async def gfs_forecast(latitude: float, longitude: float):
     )
 
     df = daily_dataframe[[f'sum_precipitation_M{m:02d}' for m in range(1,31)]]
-    for time in df.index:
+    days = df.index[:16]
+    for time in days:
         fig.add_trace(go.Box(
             y=df.loc[time],  # Values for the boxplot (columns at this time point)
             name=str(time.date()),  # Use date as x-axis label
@@ -154,7 +155,7 @@ async def gfs_forecast(latitude: float, longitude: float):
         )
 
     df = daily_dataframe[[f'sum_et0_fao_evapotranspiration_M{m:02d}' for m in range(1,31)]]
-    for time in df.index:
+    for time in days:
         fig.add_trace(go.Box(
             y=df.loc[time],  # Values for the boxplot (columns at this time point)
             name=str(time.date()),  # Use date as x-axis label
@@ -164,7 +165,7 @@ async def gfs_forecast(latitude: float, longitude: float):
         )
 
     df = daily_dataframe[[f'max_wind_speed_10m_M{m:02d}' for m in range(1,31)]]
-    for time in df.index:
+    for time in days:
         fig.add_trace(go.Box(
             y=df.loc[time],  # Values for the boxplot (columns at this time point)
             name=str(time.date()),  # Use date as x-axis label
@@ -174,7 +175,7 @@ async def gfs_forecast(latitude: float, longitude: float):
         )
 
     df = daily_dataframe[[f'max_temperature_2m_M{m:02d}' for m in range(1,31)]]
-    for time in df.index:
+    for time in days:
         fig.add_trace(go.Box(
             y=df.loc[time],  # Values for the boxplot (columns at this time point)
             name=str(time.date()),  # Use date as x-axis label
@@ -184,7 +185,7 @@ async def gfs_forecast(latitude: float, longitude: float):
         )
 
     df = daily_dataframe[[f'min_temperature_2m_M{m:02d}' for m in range(1,31)]]
-    for time in df.index:
+    for time in days:
         fig.add_trace(go.Box(
             y=df.loc[time],  # Values for the boxplot (columns at this time point)
             name=str(time.date()),  # Use date as x-axis label
@@ -195,7 +196,7 @@ async def gfs_forecast(latitude: float, longitude: float):
 
     fig.add_trace(go.Scatter(
         y=daily_dataframe['sum_precipitation_M00'],
-        x=df.index,
+        x=days,
         name='control',
         showlegend=False, 
         marker_color='grey'
@@ -204,7 +205,7 @@ async def gfs_forecast(latitude: float, longitude: float):
 
     fig.add_trace(go.Scatter(
         y=daily_dataframe['sum_et0_fao_evapotranspiration_M00'],
-        x=df.index,
+        x=days,
         name='control',
         showlegend=False, 
         marker_color='green'
@@ -213,7 +214,7 @@ async def gfs_forecast(latitude: float, longitude: float):
 
     fig.add_trace(go.Scatter(
         y=daily_dataframe['max_wind_speed_10m_M00'],
-        x=df.index,
+        x=days,
         name='control',
         showlegend=False, 
         marker_color='orange'
@@ -222,7 +223,7 @@ async def gfs_forecast(latitude: float, longitude: float):
 
     fig.add_trace(go.Scatter(
         y=daily_dataframe['max_temperature_2m_M00'],
-        x=df.index,
+        x=days,
         name='control',
         showlegend=False, 
         marker_color='red'
@@ -231,7 +232,7 @@ async def gfs_forecast(latitude: float, longitude: float):
 
     fig.add_trace(go.Scatter(
         y=daily_dataframe['min_temperature_2m_M00'],
-        x=df.index,
+        x=days,
         name='control',
         showlegend=False, 
         marker_color='blue'
@@ -256,7 +257,6 @@ def prepare_map():
     if not os.path.exists(shapefile_path):
         raise FileNotFoundError(f"Shapefile non trovato: {shapefile_path}")
 
-    # Trova il file NDVI più recente
     ndvi_files = sorted([
         os.path.join(ndvi_dir, f)
         for f in os.listdir(ndvi_dir)
@@ -264,9 +264,8 @@ def prepare_map():
     ])
     if not ndvi_files:
         raise FileNotFoundError(f"Nessun file NDVI trovato in {ndvi_dir}")
-    geotiff_path = ndvi_files[-1]  # ultimo = più recente per ordinamento alfabetico
+    geotiff_path = ndvi_files[-1]
 
-    # Carica shapefile e raster
     polygons = gpd.read_file(shapefile_path).to_crs("EPSG:4326")
     with rasterio.open(geotiff_path) as src:
         array = src.read(1)
@@ -275,27 +274,22 @@ def prepare_map():
         bounds = src.bounds
         metadata = src.tags()
 
-    stats = zonal_stats(
-        polygons,
-        array,
-        affine=affine,
-        nodata=no_data,
-        stats=["min", "max", "mean", "std"],
-    )
+    stats = zonal_stats(polygons, array, affine=affine, nodata=no_data,
+                        stats=["min", "max", "mean", "std"])
 
     polygons["min_ndvi"] = [s["min"] for s in stats]
     polygons["max_ndvi"] = [s["max"] for s in stats]
     polygons["mean_ndvi"] = [s["mean"] for s in stats]
     polygons["std_ndvi"] = [s["std"] for s in stats]
 
-    # Raster -> RGB
-    valid_data = array[array != no_data]
-    raster_min, raster_max = valid_data.min(), valid_data.max()
-    raster_normalized = np.clip((array - raster_min) / (raster_max - raster_min), 0, 1)
-    raster_image = plt.cm.viridis(raster_normalized)
-    raster_image = (raster_image[:, :, :3] * 255).astype("uint8")
+    # --- Raster to RGB image with fixed color scale 0–1 ---
+    cmap = plt.get_cmap("RdYlGn")
+    array_mapped = np.clip(array, 0, 1)  # constrain for color mapping only
+    rgba = cmap(array_mapped)
+    raster_image = (rgba[:, :, :3] * 255).astype("uint8")
     raster_bounds = [[bounds.bottom, bounds.left], [bounds.top, bounds.right]]
 
+    # --- Map creation ---
     centroids = polygons.geometry.centroid
     center = [centroids.y.mean(), centroids.x.mean()]
     ndvi_map = folium.Map(location=center, zoom_start=14)
@@ -307,17 +301,12 @@ def prepare_map():
         interactive=True,
     ).add_to(ndvi_map)
 
-    # Colora i poligoni
-    cmap = plt.get_cmap("viridis")
     def get_style(feature):
-        ndvi_value = feature["properties"].get("mean_ndvi", raster_min)
-        normalized_ndvi = np.clip((ndvi_value - raster_min) / (raster_max - raster_min), 0, 1)
-        color = mcolors.to_hex(cmap(normalized_ndvi))
         return {
             "color": "black",
-            "weight": 0.7,
-            "fillColor": color,
-            "fillOpacity": 0.6,
+            "weight": 1.5,
+            "fillColor": "#91888800",  # trasparente
+            "fillOpacity": 0.0,
         }
 
     folium.GeoJson(
@@ -334,11 +323,11 @@ def prepare_map():
 
     map_html = ndvi_map._repr_html_()
 
-    # Colorbar HTML
-    n_ticks = 8
-    tick_vals = np.linspace(raster_min, raster_max, n_ticks)
-    colors = ['#440154', '#482878', '#3e4989', '#31688e', '#26828e',
-            '#1f9e89', '#35b779', '#6ece58', '#b5de2b', '#fde725']
+    # --- Colorbar ---
+    n_ticks = 11
+    tick_vals = np.linspace(0, 1, n_ticks)
+    colormap = plt.get_cmap("RdYlGn")
+    colors = [mcolors.to_hex(colormap(v)) for v in np.linspace(0, 1, 256)]
     gradient_css = ", ".join(colors)
 
     colorbar_vertical = f"""
@@ -346,36 +335,34 @@ def prepare_map():
         position: absolute;
         top: 80px;
         right: 20px;
-        width: 100px;
+        width: 110px;
         height: 600px;
         background-color: white;
-        padding: 10px 8px 10px 10px;
+        padding: 10px 10px 10px 10px;
         border: 1px solid #ccc;
         display: flex;
         flex-direction: row;
         align-items: center;
         z-index: 9999;
     ">
-        <div style="
-            width: 30px;
-            height: 100%;
+        <div style='width: 35px; height: 100%;
             background: linear-gradient(to top, {gradient_css});
-            border: 1px solid #ccc;
-        "></div>
+            border: 1px solid #ccc;'>
+        </div>
         <div style="
-            margin-left: 10px;
+            margin-left: 12px;
             height: 100%;
             display: flex;
             flex-direction: column;
             justify-content: space-between;
-            font-size: 0.8rem;
+            font-size: 0.9rem;
         ">
     """
     for val in reversed(tick_vals):
         colorbar_vertical += f"<div style='text-align: left;'>{val:.2f}</div>"
     colorbar_vertical += "</div></div>"
 
-    # Metadata box HTML
+    # --- Metadata box ---
     keys = ["AREA_NAME", "SENSOR_TYPE", "DESCRIPTION", "ACQUISITION_DATETIME", "PROCESSING_VERSION"]
     metadata_html = """
     <div class="box" style="margin-top: 1.5rem;">

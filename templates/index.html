@@ -102,6 +102,8 @@
       const tabContents = document.querySelectorAll(".tab-content");
       const tabContainer = document.querySelector(".tabs");
 
+      let waterProfileLoaded = false;
+
       // Hide everything initially
       tabContainer.style.visibility = "hidden";
       tabContents.forEach(tc => tc.style.visibility = "hidden");
@@ -130,6 +132,10 @@
 
           if (index === 2) {
             Plotly.relayout("Precipitation", { autosize: true });
+          } else if (index === 3 && !waterProfileLoaded) {
+            loadWaterProfile().then(() => {
+              waterProfileLoaded = true;
+            });
           }
         });
       });
@@ -154,7 +160,7 @@
         loadForecastPlot(),
         loadNDVIPlot(),
         loadPrecPlot(),
-        loadWaterProfile()
+        // loadWaterProfile()
       ]);
     }
 
@@ -198,6 +204,7 @@
           hideGlobalLoading();
         });
     }
+
   </script>
 
 
