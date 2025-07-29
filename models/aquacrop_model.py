@@ -105,8 +105,10 @@ def aquacrop_run_ussana(fname=aquacrop_fname):
 def run_ensemble_and_generate_plot(location: str, force: bool = False) -> tuple[str, str]:
     data_dir = 'static/data'
 
+    data_semina = '20241203'
+
     if location == "Ussana":
-        lat, lon = 39.41043974519125, 9.09101345584236
+        lat, lon = 39.41043974519125, 9.09101345584236 
     elif location == "Benatzu":
         lat, lon = 39.4259, 8.9575
     else:
@@ -114,7 +116,6 @@ def run_ensemble_and_generate_plot(location: str, force: bool = False) -> tuple[
     
     today_str =  datetime.today().strftime('%Y%m%d')
     today = datetime.strptime(today_str, "%Y%m%d")
-    data_semina = '20241203'
     data_semina_dt = datetime.strptime(data_semina, "%Y%m%d")
     data_inizio_storico = data_semina_dt - timedelta(days=31)
     data_fine_storico = datetime.today()
@@ -192,13 +193,13 @@ def run_ensemble_and_generate_plot(location: str, force: bool = False) -> tuple[
 
     # runna aquacrop
     weather_data=ensemble_dataframes['member_00']
-    semina='2024-12-03'
+    semina=data_semina
     semina=pd.to_datetime(semina)#-timedelta(pre_days)
     pre_semina=pd.to_datetime(semina)-timedelta(30)
     giorni_pre_semina=(weather_data.index>=pre_semina)&(weather_data.index<semina)
     p_pre=weather_data['precipitation_sum'][giorni_pre_semina].sum()
     giorni_semina=(weather_data.index>semina).sum()
-    raccolta=semina+timedelta(len(weather_data)-32)#weather_data.index[-7]
+    raccolta=weather_data.index[-1]
 
     today_index=((weather_data.index>semina)&(weather_data.index<today)).sum()
 
@@ -206,11 +207,14 @@ def run_ensemble_and_generate_plot(location: str, force: bool = False) -> tuple[
     day=semina.day
     durata=giorni_semina
 
+    date_object = datetime.strptime(data_semina, '%Y%m%d')
+    formatted_date = date_object.strftime('%m/%d')
+
     # Inizializza il modello della coltura
     local_wheat = Crop('Wheat',
-        planting_date='12/03',
-        harvest_date='07/22',
-                    Zmin=0.05)
+        planting_date=formatted_date,
+        harvest_date=raccolta.strftime('%m/%d'),
+                    Zmin=0.05,Zmax=0.45)
 
     z=np.linspace(0.05,1.15,12)
 
@@ -310,11 +314,11 @@ def reorganize_gens_json(data):
 
 def plot_wprof_out(models, name, save_path, forecast_days=30):
     #print('PLOT__________________', forecast_days)
-    fig, axs = plt.subplots(4, 3, figsize=(12, 9))
+    fig, axs = plt.subplots(2, 3, figsize=(12, 4.5))
     axs = axs.flatten()
-    for i in range(1, 13):
+    for i in range(1, 7):
         #th_all = np.array([getattr(models[m]._outputs.water_storage[-forecast_days:-forecast_days+15], f"th{i}") for m in range(31)])
-        th_all = np.array([getattr(models[m]._outputs.water_storage[:], f"th{i}") for m in range(31)])
+        th_all = np.array([getattr(models[m]._outputs.water_storage[-30:], f"th{i}") for m in range(31)])
         th_all[th_all == 0] = np.nan
         #print(th_all.shape)
         #print(th_all)
@@ -326,8 +330,8 @@ def plot_wprof_out(models, name, save_path, forecast_days=30):
         axs[i - 1].set_title(f"{name} th{i}")
         axs[i - 1].grid(True)
         axs[i - 1].tick_params(labelsize=8)
-        axs[i - 1].set_ylim(0.1, 0.45)
-        if i > 9: axs[i - 1].set_xlabel('Day')
+        #axs[i - 1].set_ylim(0.1, 0.45)
+        if i > 3: axs[i - 1].set_xlabel('Day')
         if i % 3 == 1: axs[i - 1].set_ylabel('WC')
     plt.tight_layout()
     plt.savefig(save_path)
@@ -399,7 +403,7 @@ def plot_ensemble_quantiles(models, name, save_path, drop_days=30):
         ensemble_data['Wr'].append(fluxes.Wr[-drop_days:-1])
         ensemble_data['Infl'].append(fluxes.Infl[-drop_days:-1])
         ensemble_data['Runoff'].append(fluxes.Runoff[-drop_days:-1])
-        ensemble_data['DeepPerc'].append(fluxes.DeepPerc[-drop_days:-1])
+        #ensemble_data['DeepPerc'].append(fluxes.DeepPerc[-drop_days:-1])
         ensemble_data['Es'].append(fluxes.Es[-drop_days:-1])
         ensemble_data['EsPot'].append(fluxes.EsPot[-drop_days:-1])
         ensemble_data['Tr'].append(fluxes.Tr[-drop_days:-1])
@@ -408,20 +412,29 @@ def plot_ensemble_quantiles(models, name, save_path, drop_days=30):
         ensemble_data['Infl_cum'].append(fluxes.Infl.cumsum()[:-1])
         ensemble_data['Es_cum'].append(fluxes.Es.cumsum()[:-1])
         if(m==0):
-            axs[15].plot(models[m]._outputs.water_flux.Infl.cumsum()[:-1],c='b',label=name+' Pcum')
-            axs[15].plot(models[m]._outputs.water_flux.Es.cumsum()[:-1],c='g',label=name+' Ecum')
+            axs[15].plot(models[m]._outputs.water_flux.Infl.cumsum()[:-1],c='b',label='Pcum')
+            axs[15].plot(models[m]._outputs.water_flux.Es.cumsum()[:-1],c='g',label='Ecum')
             axs[15].grid(True)
         else:
             axs[15].plot(models[m]._outputs.water_flux.Infl.cumsum()[:-1],c='b')
             axs[15].plot(models[m]._outputs.water_flux.Es.cumsum()[:-1],c='g')
         max_plu=200
-        axs[15].plot((13,13),(0,max_plu))#,label='Emergence')
-        axs[15].plot((93,93),(0,max_plu))#,label='MaxRooting')
-        axs[15].plot((127,127),(0,max_plu))#,label='HIstart')
-        axs[15].plot((127+15,127+15),(50,max_plu-50))#,label='Flowering')
-        axs[15].plot((158,158),(0,max_plu))#,label='Senescence')
-        axs[15].plot((197,197),(0,max_plu))#,label='Maturity')
+        if m==0:
+            axs[15].plot((13,13),(0,max_plu),label='Emergence')
+            axs[15].plot((93,93),(0,max_plu),label='MaxRooting')
+            axs[15].plot((127,127),(0,max_plu),label='HIstart')
+            axs[15].plot((127+15,127+15),(50,max_plu-50),label='Flowering')
+            axs[15].plot((158,158),(0,max_plu),label='Senescence')
+            axs[15].plot((197,197),(0,max_plu),label='Maturity')
+            #axs[15].legend(loc='center left', bbox_to_anchor=(1.5, 1.5),fontsize=8)
 
+        #if(m==0) :
+        #    for ax in axs:
+        #        ax.grid(True)
+        #        ax.legend(fontsize=8)
+        #        ax.tick_params(axis='both', which='major', labelsize=8)
+        #    axs[15].legend(loc='center left', bbox_to_anchor=(1.5, 1.5),fontsize=8)
+        
     # Calculate and plot quantiles for each variable
     variables_to_plot = [
         ('gdd', axs[0], 'GDD'),
@@ -466,7 +479,9 @@ def plot_ensemble_quantiles(models, name, save_path, drop_days=30):
         handles, labels = ax.get_legend_handles_labels()
         if handles:
             ax.legend(handles, labels, fontsize=8)
+    axs[15].legend(loc='center left', bbox_to_anchor=(1.0, 0.5),fontsize=8)
 
+    #plt.subplots_adjust(right=0.82)
     plt.tight_layout()
     plt.savefig(save_path)
     plt.close()
