@@ -1,14 +1,15 @@
 # gunicorn.conf.py
 import multiprocessing
 
-bind = "0.0.0.0:8000"
-workers = multiprocessing.cpu_count() * 2 + 1
+bind = "127.0.0.1:8003"             # <-- backend port (private)
+workers = 4
 worker_class = "uvicorn.workers.UvicornWorker"
-reload = False
-timeout = 300  # Example: 5 minutes
-accesslog = "access.log"  # Relative path (recommended)
-errorlog = "error.log"  # Relative path (recommended)
-# OR absolute paths:
-# accesslog = "/apps/app_repo/arsinoe_server/access.log"
-# errorlog = "/apps/app_repo/arsinoe_server/error.log"
-# ... other settings
+timeout = 300
+graceful_timeout = 30
+keepalive = 5
+
+# Optional logging
+accesslog = "/var/log/gunicorn/arsinoe_access.log"
+errorlog  = "/var/log/gunicorn/arsinoe_error.log"
+loglevel  = "info"
+
