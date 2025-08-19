@@ -59,8 +59,58 @@ def favicon():
     return fastapi.responses.RedirectResponse(url='https://arsinoe-project.eu/securstorage/2022/02/favicon-32.png')
 
 
-@router.get("/gfs_forecast/{latitude}/{longitude}", include_in_schema=False)
-async def gfs_forecast(latitude: float, longitude: float):
+@router.get(
+    "/gfs_forecast/{latitude}/{longitude}",
+    summary="GFS ensemble boxplots for precipitation, ET0, wind speed and temperature",
+    description=(
+        "Fetches weather forecasts from the **Open-Meteo Ensemble API** (`gfs_seamless` model) "
+        "for the provided coordinates and builds **daily statistics** by aggregating ensemble members.\n\n"
+        "**Workflow:**\n"
+        "1. Calls the endpoint `https://ensemble-api.open-meteo.com/v1/ensemble` with *latitude*, *longitude*, "
+        "hourly variables `temperature_2m`, `precipitation`, `et0_fao_evapotranspiration`, `wind_speed_10m`, `surface_temperature`, "
+        "`forecast_days=36` and `temporal_resolution=native` on the model `gfs_seamless`.\n"
+        "2. Converts the response into an **hourly dataframe** containing all ensemble members "
+        "(M00 = control run, M01..M30 = stochastic members).\n"
+        "3. Computes a **daily dataframe** with:\n"
+        "   - 2m temperature: mean/min/max per member\n"
+        "   - Precipitation: 24h sum per member\n"
+        "   - ET0 FAO: 24h sum per member\n"
+        "   - 10m wind speed: daily max per member\n"
+        "4. Generates a Plotly figure with **4 subplots** sharing the x-axis, showing for the first 16 days "
+        "a **boxplot of all ensemble members (M01..M30)** and the **control member (M00)** as a line:\n"
+        "   - Panel 1: *Total precipitation [mm/24h]*\n"
+        "   - Panel 2: *Total ET0 FAO evapotranspiration [mm/24h]*\n"
+        "   - Panel 3: *10m wind speed max [m/s]*\n"
+        "   - Panel 4: *2m temperature min/max [°C]* (control run lines for min/max)\n\n"
+        "The endpoint returns the **Plotly figure as JSON**, ready to be rendered on the client side "
+        "(e.g. with `Plotly.newPlot(...)`)."
+    ),
+    tags=["Forecast", "GFS", "Open-Meteo"],
+    response_description="Plotly figure serialized as JSON, including boxplots of ensemble members and the control run line.",
+    responses={
+        200: {
+            "description": "Figure successfully generated (Plotly JSON).",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "data": [{"type": "box", "y": [1, 2, 3]}],
+                        "layout": {"title": "GFS forecast"}
+                    }
+                }
+            }
+        },
+        422: {"description": "Invalid parameters (lat/long out of range, wrong types)."},
+        503: {"description": "Upstream weather service unavailable or temporary timeout."}
+    },
+    include_in_schema=True,
+)
+async def gfs_forecast(
+    latitude: float = fastapi.Path(..., ge=-90, le=90, description="Latitude in decimal degrees (−90 … +90)."),
+    longitude: float = fastapi.Path(..., ge=-180, le=180, description="Longitude in decimal degrees (−180 … +180).")
+) -> dict:
+    """
+    Returns the Plotly figure as JSON. See the detailed description above.
+    """
     # Setup the Open-Meteo API client with cache and retry on error
     cache_session = requests_cache.CachedSession('.cache', expire_after = 3600)
     retry_session = retry(cache_session, retries = 5, backoff_factor = 0.2)
@@ -249,38 +299,90 @@ async def gfs_forecast(latitude: float, longitude: float):
 
     return json.loads(plot_json)
 
-@router.get("/ndvi_map", include_in_schema=False, response_class=HTMLResponse)
-def prepare_map():
+
+@router.get(
+    "/ndvi_map",
+    summary="Interactive NDVI map with parcels overlay and per-parcel statistics",
+    description=(
+        "Builds an **interactive Leaflet map** (via Folium) overlaying the latest NDVI GeoTIFF "
+        "with a **parcel shapefile**, and computes **zonal statistics** (min/max/mean/std) per parcel.\n\n"
+        "**Workflow:**\n"
+        "1. Loads the parcel shapefile (`static/shapefiles/parcelle2022_2023.shp`) and reprojects to **EPSG:4326**.\n"
+        "2. Scans `static/geotiff_ndvi/` for `.tif` files and selects the **most recent** one.\n"
+        "3. Reads the GeoTIFF (NDVI band, transform, nodata, bounds, and metadata tags).\n"
+        "4. Computes **zonal stats** on the NDVI array for each parcel: *min*, *max*, *mean*, *std*.\n"
+        "5. Renders a Folium map centered on the parcels' centroids, adds an **ImageOverlay** of NDVI (fixed scale 0–1), "
+        "and a **GeoJSON** layer with tooltips showing the per-parcel NDVI stats.\n"
+        "6. Appends a vertical **colorbar** (0→1) and a **metadata box** (selected GeoTIFF tags).\n\n"
+        "Returns an **HTML document** (Leaflet map + overlays) that can be embedded directly in a web page."
+    ),
+    tags=["NDVI", "Remote Sensing", "Maps"],
+    response_description="Embeddable HTML page containing the Leaflet map, NDVI overlay, parcel boundaries, legend, and metadata.",
+    responses={
+        200: {
+            "description": "HTML map successfully generated.",
+            "content": {
+                "text/html": {
+                    "example": "<!doctype html><html><body><div id='map'></div></body></html>"
+                }
+            }
+        },
+        404: {"description": "Required input not found (missing shapefile or NDVI GeoTIFF)."},
+        503: {"description": "Error while reading geospatial data or generating the map."}
+    },
+    include_in_schema=True,
+    response_class=HTMLResponse,
+)
+def ndvi_map() -> HTMLResponse:
+    """
+    Returns an embeddable HTML page with the Leaflet NDVI map and per-parcel statistics.
+    See the detailed description above.
+    """
     shapefile_path = "static/shapefiles/parcelle2022_2023.shp"
     ndvi_dir = "static/geotiff_ndvi"
 
     if not os.path.exists(shapefile_path):
-        raise FileNotFoundError(f"Shapefile non trovato: {shapefile_path}")
+        raise fastapi.HTTPException(status_code=404, detail=f"Shapefile non trovato: {shapefile_path}")
 
-    ndvi_files = sorted([
-        os.path.join(ndvi_dir, f)
-        for f in os.listdir(ndvi_dir)
-        if f.endswith(".tif")
-    ])
+    try:
+        ndvi_files = sorted(
+            [os.path.join(ndvi_dir, f) for f in os.listdir(ndvi_dir) if f.endswith(".tif")]
+        )
+    except Exception as e:
+        raise fastapi.HTTPException(status_code=503, detail=f"Errore nello scanning NDVI: {e}")
+
     if not ndvi_files:
-        raise FileNotFoundError(f"Nessun file NDVI trovato in {ndvi_dir}")
+        raise fastapi.HTTPException(status_code=404, detail=f"Nessun file NDVI trovato in {ndvi_dir}")
     geotiff_path = ndvi_files[-1]
 
-    polygons = gpd.read_file(shapefile_path).to_crs("EPSG:4326")
-    with rasterio.open(geotiff_path) as src:
-        array = src.read(1)
-        affine = src.transform
-        no_data = src.nodata
-        bounds = src.bounds
-        metadata = src.tags()
+    # --- Load vectors & raster ---
+    try:
+        polygons = gpd.read_file(shapefile_path).to_crs("EPSG:4326")
+    except Exception as e:
+        raise fastapi.HTTPException(status_code=503, detail=f"Errore lettura shapefile: {e}")
 
-    stats = zonal_stats(polygons, array, affine=affine, nodata=no_data,
-                        stats=["min", "max", "mean", "std"])
+    try:
+        with rasterio.open(geotiff_path) as src:
+            array = src.read(1)
+            affine = src.transform
+            no_data = src.nodata
+            bounds = src.bounds
+            metadata = src.tags()
+    except Exception as e:
+        raise fastapi.HTTPException(status_code=503, detail=f"Errore lettura GeoTIFF: {e}")
 
-    polygons["min_ndvi"] = [s["min"] for s in stats]
-    polygons["max_ndvi"] = [s["max"] for s in stats]
-    polygons["mean_ndvi"] = [s["mean"] for s in stats]
-    polygons["std_ndvi"] = [s["std"] for s in stats]
+    # --- Zonal statistics ---
+    try:
+        stats = zonal_stats(
+            polygons, array, affine=affine, nodata=no_data, stats=["min", "max", "mean", "std"]
+        )
+    except Exception as e:
+        raise fastapi.HTTPException(status_code=503, detail=f"Errore calcolo zonal stats: {e}")
+
+    polygons["min_ndvi"] = [s.get("min") for s in stats]
+    polygons["max_ndvi"] = [s.get("max") for s in stats]
+    polygons["mean_ndvi"] = [s.get("mean") for s in stats]
+    polygons["std_ndvi"] = [s.get("std") for s in stats]
 
     # --- Raster to RGB image with fixed color scale 0–1 ---
     cmap = plt.get_cmap("RdYlGn")
@@ -290,38 +392,41 @@ def prepare_map():
     raster_bounds = [[bounds.bottom, bounds.left], [bounds.top, bounds.right]]
 
     # --- Map creation ---
-    centroids = polygons.geometry.centroid
-    center = [centroids.y.mean(), centroids.x.mean()]
-    ndvi_map = folium.Map(location=center, zoom_start=14)
+    try:
+        centroids = polygons.geometry.centroid
+        center = [centroids.y.mean(), centroids.x.mean()]
+        ndvi_map = folium.Map(location=center, zoom_start=14)
 
-    folium.raster_layers.ImageOverlay(
-        image=raster_image,
-        bounds=raster_bounds,
-        opacity=0.7,
-        interactive=True,
-    ).add_to(ndvi_map)
+        folium.raster_layers.ImageOverlay(
+            image=raster_image,
+            bounds=raster_bounds,
+            opacity=0.7,
+            interactive=True,
+        ).add_to(ndvi_map)
 
-    def get_style(feature):
-        return {
-            "color": "black",
-            "weight": 1.5,
-            "fillColor": "#91888800",  # trasparente
-            "fillOpacity": 0.0,
-        }
+        def get_style(_feature):
+            return {
+                "color": "black",
+                "weight": 1.5,
+                "fillColor": "#91888800",  # trasparente
+                "fillOpacity": 0.0,
+            }
 
-    folium.GeoJson(
-        polygons.to_json(),
-        style_function=get_style,
-        tooltip=folium.GeoJsonTooltip(
-            fields=["LOCALITà", "TESI", "mean_ndvi", "min_ndvi", "max_ndvi", "std_ndvi"],
-            aliases=["Località:", "Tesi:", "NDVI medio:", "NDVI min:", "NDVI max:", "Dev std NDVI:"],
-            localize=True,
-            labels=True,
-            sticky=True
-        )
-    ).add_to(ndvi_map)
+        folium.GeoJson(
+            polygons.to_json(),
+            style_function=get_style,
+            tooltip=folium.GeoJsonTooltip(
+                fields=["LOCALITà", "TESI", "mean_ndvi", "min_ndvi", "max_ndvi", "std_ndvi"],
+                aliases=["Località:", "Tesi:", "NDVI medio:", "NDVI min:", "NDVI max:", "Dev std NDVI:"],
+                localize=True,
+                labels=True,
+                sticky=True,
+            ),
+        ).add_to(ndvi_map)
 
-    map_html = ndvi_map._repr_html_()
+        map_html = ndvi_map._repr_html_()
+    except Exception as e:
+        raise fastapi.HTTPException(status_code=503, detail=f"Errore generazione mappa: {e}")
 
     # --- Colorbar ---
     n_ticks = 11
@@ -379,7 +484,7 @@ def prepare_map():
     </div>
     """
 
-    return map_html + colorbar_vertical + metadata_html
+    return HTMLResponse(content=map_html + colorbar_vertical + metadata_html)
 
 
 def download_and_save_new_ndvi_scl(
@@ -618,92 +723,141 @@ def extract_ndvi_series_grouped_by_treatment_valid_classes(
     df = df.sort_index()
     return df
 
-@router.get("/precipitation_plot/{latitude}/{longitude}", include_in_schema=False)
-async def precipitation(latitude: float, longitude: float):
 
-    # === Precipitation from Open-Meteo ===
-    cache_session = requests_cache.CachedSession('.cache', expire_after=-1)
-    retry_session = retry(cache_session, retries=5, backoff_factor=0.2)
-    openmeteo = openmeteo_requests.Client(session=retry_session)
+@router.get(
+    "/precipitation_plot/{latitude}/{longitude}",
+    summary="Daily precipitation (Open-Meteo) with NDVI time-series (Sentinel-2) by treatment",
+    description=(
+        "Builds a **dual-axis Plotly chart** combining daily **precipitation** from the "
+        "**Open-Meteo Archive API** with **NDVI time-series** extracted from Sentinel-2 over a fixed AOI.\n\n"
+        "**Workflow:**\n"
+        "1. Queries `https://archive-api.open-meteo.com/v1/archive` for *daily* `precipitation_sum` using "
+        "*latitude* and *longitude*, from **2022-10-01** to **today** (`models=best_match`).\n"
+        "2. Calls an internal routine `download_and_save_new_ndvi_scl(...)` to **download any new Sentinel-2 scenes** "
+        "(NDVI & SCL) inside a fixed bounding box (10 m resolution, cloud cover ≤ 40%).\n"
+        "3. Extracts NDVI time-series grouped by treatment with "
+        "`extract_ndvi_series_grouped_by_treatment_valid_classes(...)` using "
+        "`static/shapefiles/parcelle2022_2023.shp`.\n"
+        "4. Creates a Plotly figure with **precipitation** (primary y-axis) and **NDVI** per treatment "
+        "(secondary y-axis), and returns the **figure as JSON** suitable for `Plotly.newPlot(...)`."
+    ),
+    tags=["NDVI", "Precipitation", "Open-Meteo", "Sentinel-2"],
+    response_description="Plotly figure serialized as JSON with precipitation and NDVI lines.",
+    responses={
+        200: {
+            "description": "Figure successfully generated (Plotly JSON).",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "data": [
+                            {"type": "scatter", "name": "Precipitation", "y": [0.6, 3.2, 0.0]},
+                            {"type": "scatter", "name": "Ussana 100%", "y": [0.41, 0.56, 0.52]}
+                        ],
+                        "layout": {"title": "Precipitation and NDVI"}
+                    }
+                }
+            }
+        },
+        404: {"description": "Shapefile not found."},
+        422: {"description": "Invalid parameters (lat/long out of range, wrong types)."},
+        503: {"description": "Upstream service or geospatial processing error."}
+    },
+    include_in_schema=True,
+    response_class=JSONResponse,
+)
+async def precipitation_plot(
+    latitude: float = fastapi.Path(..., ge=-90, le=90, description="Latitude in decimal degrees (−90 … +90)."),
+    longitude: float = fastapi.Path(..., ge=-180, le=180, description="Longitude in decimal degrees (−180 … +180).")
+) -> dict:
+    """
+    Returns the Plotly figure as JSON. See the detailed description above.
+    """
+    # === 1) Open-Meteo: daily precipitation ===
+    try:
+        cache_session = requests_cache.CachedSession(".cache", expire_after=-1)
+        retry_session = retry(cache_session, retries=5, backoff_factor=0.2)
+        openmeteo = openmeteo_requests.Client(session=retry_session)
 
-    today = datetime.today().strftime("%Y-%m-%d")
+        start_date = "2022-10-01"
+        today = datetime.today().strftime("%Y-%m-%d")
+        url = "https://archive-api.open-meteo.com/v1/archive"
+        params = {
+            "latitude": latitude,
+            "longitude": longitude,
+            "start_date": start_date,
+            "end_date": today,
+            "daily": "precipitation_sum",
+            "models": "best_match",
+        }
+        responses = openmeteo.weather_api(url, params=params)
+        response = responses[0]
+        daily = response.Daily()
 
-    start_date = "2022-10-01"
-    end_date = today
-    time_interval = (start_date, end_date)
+        daily_precipitation_sum = daily.Variables(0).ValuesAsNumpy()
+        daily_data = {
+            "date": pd.date_range(
+                start=pd.to_datetime(daily.Time(), unit="s", utc=True),
+                end=pd.to_datetime(daily.TimeEnd(), unit="s", utc=True),
+                freq=pd.Timedelta(seconds=daily.Interval()),
+                inclusive="left",
+            ),
+            "precipitation_sum": daily_precipitation_sum,
+        }
+        daily_dataframe = pd.DataFrame(daily_data).set_index("date")
+    except Exception as e:
+        raise fastapi.HTTPException(status_code=503, detail=f"Open-Meteo error: {e}")
 
-    url = "https://archive-api.open-meteo.com/v1/archive"
-    params = {
-        "latitude": latitude,
-        "longitude": longitude,
-        "start_date": start_date,
-        "end_date": today,
-        "daily": "precipitation_sum",
-        "models": "best_match"
-    }
-    responses = openmeteo.weather_api(url, params=params)
-    response = responses[0]
-    daily = response.Daily()
-    daily_precipitation_sum = daily.Variables(0).ValuesAsNumpy()
-    daily_data = {
-        "date": pd.date_range(
-            start=pd.to_datetime(daily.Time(), unit="s", utc=True),
-            end=pd.to_datetime(daily.TimeEnd(), unit="s", utc=True),
-            freq=pd.Timedelta(seconds=daily.Interval()),
-            inclusive="left"
-        ),
-        "precipitation_sum": daily_precipitation_sum
-    }
-    daily_dataframe = pd.DataFrame(data=daily_data).set_index('date')
+    # === 2) Sentinel-2 NDVI/SCL: download missing scenes ===
+    try:
+        # Fixed AOI bounding box (minLon, minLat, maxLon, maxLat)
+        bbox_coords = (9.0747, 39.4022, 9.1186, 39.4361)
+        time_interval = (start_date, today)
 
-    # === Download dinamico NDVI/SCL ===
-    bbox_coords = bbox_coords=(9.0747, 39.4022, 9.1186, 39.4361)
-    ndvi_dir = "static/geotiff_ndvi"
-    scl_dir = "static/geotiff_scl"
-    
-    download_and_save_new_ndvi_scl(
-        #client_id=os.getenv("SH_CLIENT_ID"),
-        #client_secret=os.getenv("SH_CLIENT_SECRET"),
-        client_id="sh-031078ea-3866-4001-8550-5e8e942d7c78",
-        client_secret="sT1q2RdKNfMwAGtlA2mebNLW23CxcocX",
-        bbox_coords=bbox_coords,
-        time_interval=time_interval,
-        ndvi_dir=ndvi_dir,
-        scl_dir=scl_dir, 
-        resolution=10,
-        max_cloud_cover=40  # puoi alzarlo o abbassarlo
-    )
+        client_id = os.getenv("SH_CLIENT_ID")
+        client_secret = os.getenv("SH_CLIENT_SECRET")
+        if not client_id or not client_secret:
+            raise RuntimeError("Sentinel Hub credentials missing (set SH_CLIENT_ID and SH_CLIENT_SECRET).")
 
-    # === NDVI data extraction ===
-    shapefile_path = "static/shapefiles/parcelle2022_2023.shp"
-    df_ndvi = extract_ndvi_series_grouped_by_treatment_valid_classes(
-        shapefile_path=shapefile_path,
-        ndvi_dir=ndvi_dir,
-        scl_dir=scl_dir
-    )
+        ndvi_dir = "static/geotiff_ndvi"
+        scl_dir = "static/geotiff_scl"
+
+        download_and_save_new_ndvi_scl(
+            client_id=client_id,
+            client_secret=client_secret,
+            bbox_coords=bbox_coords,
+            time_interval=time_interval,
+            ndvi_dir=ndvi_dir,
+            scl_dir=scl_dir,
+            resolution=10,
+            max_cloud_cover=40,
+        )
+    except Exception as e:
+        raise fastapi.HTTPException(status_code=503, detail=f"Sentinel-2 download error: {e}")
+
+    # === 3) NDVI extraction grouped by treatment ===
+    try:
+        shapefile_path = "static/shapefiles/parcelle2022_2023.shp"
+        if not os.path.exists(shapefile_path):
+            raise fastapi.HTTPException(status_code=404, detail=f"Shapefile non trovato: {shapefile_path}")
+
+        df_ndvi = extract_ndvi_series_grouped_by_treatment_valid_classes(
+            shapefile_path=shapefile_path, ndvi_dir=ndvi_dir, scl_dir=scl_dir
+        )
+    except fastapi.HTTPException:
+        raise
+    except Exception as e:
+        raise fastapi.HTTPException(status_code=503, detail=f"NDVI extraction error: {e}")
 
     group_names = [
-        ("BENATZU_TEST", "Benatzu Test", 'Blugrn'),
-        ("BENATZU_50", "Benatzu 50%", 'Blugrn'),
-        ("BENATZU_100", "Benatzu 100%", 'Blugrn'),
-        ("USSANA_TEST", "Ussana Test", 'Redor'),
-        ("USSANA_50", "Ussana 50%", 'Redor'),
-        ("USSANA_100", "Ussana 100%", 'Redor')
+        ("BENATZU_TEST", "Benatzu Test", "Blugrn"),
+        ("BENATZU_50", "Benatzu 50%", "Blugrn"),
+        ("BENATZU_100", "Benatzu 100%", "Blugrn"),
+        ("USSANA_TEST", "Ussana Test", "Redor"),
+        ("USSANA_50", "Ussana 50%", "Redor"),
+        ("USSANA_100", "Ussana 100%", "Redor"),
     ]
 
-    # === DIAGNOSTICA ===
-    #print(">>> NDVI DataFrame shape:", df_ndvi.shape)
-    #print(">>> NDVI columns:", df_ndvi.columns.tolist())
-    #print(">>> NDVI head:")
-    #print(df_ndvi.head())
-
-    #expected_groups = [g[0] for g in group_names]
-    #missing = [g for g in expected_groups if g not in df_ndvi.columns]
-    #print(">>> Missing groups:", missing)
-    #print(">>> NDVI non-NaN counts:")
-    #print(df_ndvi.notna().sum())
-
-    # === Plot ===
+    # === 4) Plotly figure ===
     fig = make_subplots(specs=[[{"secondary_y": True}]])
     fig.add_trace(
         go.Scatter(
@@ -711,33 +865,25 @@ async def precipitation(latitude: float, longitude: float):
             y=daily_dataframe["precipitation_sum"],
             name="Precipitation",
             mode="lines+markers",
-            line_color="darkblue"
+            line_color="darkblue",
         ),
-        secondary_y=False
+        secondary_y=False,
     )
 
+    # Color NDVI lines by treatment using Plotly colorscales
     for i, (group_col, label, colorscale) in enumerate(group_names):
         if group_col not in df_ndvi.columns:
             continue
         s = df_ndvi[group_col].dropna()
         if s.empty:
             continue
-        color = sample_colorscale(colorscale, [i / 6])[0]
+        color = sample_colorscale(colorscale, [i / max(1, len(group_names) - 1)])[0]
         fig.add_trace(
-            go.Scatter(
-                x=s.index,
-                y=s,
-                name=label,
-                mode='lines+markers',
-                line_color=color
-            ),
-            secondary_y=True
-    )
+            go.Scatter(x=s.index, y=s, name=label, mode="lines+markers", line_color=color),
+            secondary_y=True,
+        )
 
-    fig.update_layout(
-        title="Precipitation and NDVI",
-        height=800
-    )
+    fig.update_layout(title="Precipitation and NDVI", height=800)
     fig.update_xaxes(title_text="Date")
     fig.update_yaxes(title_text="Precipitation [mm H₂O]", secondary_y=False)
     fig.update_yaxes(title_text="NDVI [-]", secondary_y=True)
@@ -745,74 +891,235 @@ async def precipitation(latitude: float, longitude: float):
     return json.loads(json.dumps(fig, cls=PlotlyJSONEncoder))
 
 
-@router.post("/simulation", response_class=HTMLResponse)
+# -------------------------------
+# 1) Run AquaCrop simulation
+# -------------------------------
+@router.post(
+    "/simulation",
+    summary="Run AquaCrop simulation from uploaded weather file (Ussana/Benatzu)",
+    description=(
+        "Uploads a weather input file and runs the **AquaCrop** model for the selected site "
+        "(**Ussana** or **Benatzu**), then returns a **Plotly figure JSON** and a **download URL** "
+        "for detailed results.\n\n"
+        "**Workflow:**\n"
+        "1. Accepts a multipart form with a file (`file`) and a site selection (`site`).\n"
+        "2. Saves the uploaded file under `uploads/`.\n"
+        "3. Runs `aquacrop_run_ussana(...)` or `aquacrop_run_benatzu(...)` based on `site`.\n"
+        "4. Extracts `model._outputs.final_stats` and saves it as JSON (`*_results.json`) in `uploads/`.\n"
+        "5. Builds a Plotly figure with **Yield potential** and **Fresh yield** vs. **Harvest Date (YYYY/MM/DD)**.\n"
+        "6. Returns the Plotly **figure JSON** and a `download_url` pointing to `/download/{filename}`."
+    ),
+    tags=["AquaCrop", "Simulation"],
+    response_description="Plotly figure as JSON and a URL to download the full results JSON.",
+    responses={
+        200: {
+            "description": "Simulation completed; figure and download URL returned.",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "plot": {
+                            "data": [
+                                {"type": "scatter", "name": "Yield potential", "mode": "lines+markers"},
+                                {"type": "scatter", "name": "Fresh yield", "mode": "lines+markers"}
+                            ],
+                            "layout": {"title": "Ussana production"}
+                        },
+                        "download_url": "/download/example_results.json"
+                    }
+                }
+            }
+        },
+        400: {"description": "Invalid `site` value."},
+        422: {"description": "Validation error (missing file or form fields)."},
+        503: {"description": "Simulation failed (AquaCrop error)."}
+    },
+    include_in_schema=True,
+    response_class=JSONResponse,
+)
 async def process_file(
     request: Request,
-    file: UploadFile = File(...),  # File upload
-    site: str = Form(...)     # Parameter selected by radio buttons
-):
-    # Save the uploaded file to a temporary location
-    file_path = os.path.join('uploads', file.filename)
+    file: fastapi.UploadFile = fastapi.File(..., description="Weather input file for AquaCrop."),
+    site: str = fastapi.Form(..., description="Target site: 'Ussana' or 'Benatzu'.")
+) -> dict:
+    """
+    Returns a Plotly figure JSON and a download URL for the results JSON.
+    """
+    # Ensure uploads dir exists
+    os.makedirs("uploads", exist_ok=True)
+
+    # Save file
+    file_path = os.path.join("uploads", file.filename)
     with open(file_path, "wb") as buffer:
         buffer.write(await file.read())
 
-    # Perform simulation
-    if site == "Ussana":
-        #print(file_path)
-        model = aquacrop_run_ussana(file_path)
-    elif site == "Benatzu":
-        model = aquacrop_run_benatzu(file_path)
-    
+    # Run simulation
+    try:
+        if site == "Ussana":
+            model = aquacrop_run_ussana(file_path)
+        elif site == "Benatzu":
+            model = aquacrop_run_benatzu(file_path)
+        else:
+            return JSONResponse({"error": "Invalid site. Use 'Ussana' or 'Benatzu'."}, status_code=400)
+    except Exception as e:
+        return JSONResponse({"error": f"AquaCrop simulation failed: {e}"}, status_code=503)
+
     df = model._outputs.final_stats
 
-    # Save the DataFrame as JSON
+    # Save results JSON
     json_filename = f"{file.filename}_results.json"
     json_filepath = os.path.join("uploads", json_filename)
-    df.to_json(json_filepath, orient="records", date_format="iso")  # Save as JSON
+    df.to_json(json_filepath, orient="records", date_format="iso")
 
-    # Create a Plotly figure
+    # Build figure
     fig = go.Figure()
-    fig.add_trace(go.Scatter(x=df['Harvest Date (YYYY/MM/DD)'], 
-                             y=df['Yield potential (tonne/ha)'], 
-                             mode="lines+markers", name="Yield potential", showlegend=False))
-    fig.add_trace(go.Scatter(x=df['Harvest Date (YYYY/MM/DD)'], 
-                             y=df['Fresh yield (tonne/ha)'], 
-                             mode="lines+markers", name="Fresh yield", showlegend=False))
-    fig.update_layout(title=f"{site} production", 
-                      xaxis_title="Year", yaxis_title="Yield (tonne/ha)",
-                      xaxis_showgrid=True, yaxis_showgrid=True, 
-                      height=500)
-    
-    # Convert figure to JSON for frontend
-    fig_json = json.dumps(fig, cls=PlotlyJSONEncoder)
+    fig.add_trace(go.Scatter(
+        x=df['Harvest Date (YYYY/MM/DD)'],
+        y=df['Yield potential (tonne/ha)'],
+        mode="lines+markers",
+        name="Yield potential",
+        showlegend=False
+    ))
+    fig.add_trace(go.Scatter(
+        x=df['Harvest Date (YYYY/MM/DD)'],
+        y=df['Fresh yield (tonne/ha)'],
+        mode="lines+markers",
+        name="Fresh yield",
+        showlegend=False
+    ))
+    fig.update_layout(
+        title=f"{site} production",
+        xaxis_title="Year",
+        yaxis_title="Yield (tonne/ha)",
+        xaxis_showgrid=True,
+        yaxis_showgrid=True,
+        height=500
+    )
 
-    # Return response with download URL
-    download_url = f"/download/{json_filename}"
-    return JSONResponse(content={
-        "plot": json.loads(fig_json),
-        "download_url": download_url
-    })
+    return {
+        "plot": json.loads(json.dumps(fig, cls=PlotlyJSONEncoder)),
+        "download_url": f"/download/{json_filename}"
+    }
 
 
-@router.get("/download/{filename}")
-async def download_file(filename: str):
+# -------------------------------
+# 2) Download results file
+# -------------------------------
+@router.get(
+    "/download/{filename}",
+    summary="Download a results JSON produced by /simulation",
+    description=(
+        "Serves a JSON file previously generated by the **/simulation** endpoint. "
+        "The file must exist under `uploads/`."
+    ),
+    tags=["AquaCrop", "Simulation"],
+    response_description="Raw JSON file with simulation statistics.",
+    responses={
+        200: {
+            "description": "File found and returned.",
+            "content": {
+                "application/json": {
+                    "example": [
+                        {"Harvest Date (YYYY/MM/DD)": "2025/06/30",
+                         "Yield potential (tonne/ha)": 5.1,
+                         "Fresh yield (tonne/ha)": 8.4}
+                    ]
+                }
+            }
+        },
+        404: {"description": "File not found."}
+    },
+    include_in_schema=True,
+    response_model=None,  # <- avoid Pydantic model generation
+)
+async def download_file(filename: str) -> fastapi.Response:  # <- annotate as Response
     file_path = os.path.join("uploads", filename)
-    if os.path.exists(file_path):
-        return FileResponse(file_path, media_type="application/json", filename=filename)
-    return JSONResponse(content={"error": "File not found"}, status_code=404)
+    if not os.path.exists(file_path):
+        raise fastapi.HTTPException(status_code=404, detail="File not found")
+    return FileResponse(file_path, media_type="application/json", filename=filename)
 
-@router.post("/upload/")
-async def upload_file(file: UploadFile = File(...)):
-    file_path = os.path.join('uploads', file.filename)
+
+# -------------------------------
+# 3) Simple upload helper
+# -------------------------------
+@router.post(
+    "/upload/",
+    summary="Upload a file to the server (utility endpoint)",
+    description=(
+        "Uploads a file and stores it under `uploads/`. "
+        "Primarily used as a helper to pre-stage inputs."
+    ),
+    tags=["Utilities"],
+    response_description="Echoes filename and server-side path.",
+    responses={
+        200: {
+            "description": "Upload completed.",
+            "content": {
+                "application/json": {
+                    "example": {"filename": "weather.txt", "filepath": "uploads/weather.txt"}
+                }
+            }
+        },
+        422: {"description": "Validation error (missing file)."}
+    },
+    include_in_schema=True,
+)
+async def upload_file(file: fastapi.UploadFile = fastapi.File(..., description="Any file to store under uploads/")):
+    os.makedirs("uploads", exist_ok=True)
+    file_path = os.path.join("uploads", file.filename)
     with open(file_path, "wb") as buffer:
         buffer.write(await file.read())
     return {"filename": file.filename, "filepath": file_path}
 
 
-@router.get("/water_profile")
-def water_profile(location: str = Query("Ussana"), force: bool = Query(False)):
-    image_path_1, image_path_2 = run_ensemble_and_generate_plot(location, force=force)
-    return {
-        "image_url_1": f"/{image_path_1}", 
-        "image_url_2": f"/{image_path_2}"
-    }
+# -------------------------------
+# 4) Water profile (AquaCrop ensemble)
+# -------------------------------
+@router.get(
+    "/water_profile",
+    summary="Generate (or reuse) AquaCrop ensemble water-profile plots for a location",
+    description=(
+        "Runs (or reuses cached) **AquaCrop ensemble** simulations and returns URLs to two PNG images:\n"
+        "- **Water profile quantiles** (soil water content by layer, ensemble bands)\n"
+        "- **Model outputs overview** (ensemble quantiles for key variables)\n\n"
+        "**Workflow:**\n"
+        "1. Based on `location` (**Ussana** or **Benatzu**), selects the site coordinates.\n"
+        "2. Retrieves historical + ensemble forecast weather (Open-Meteo GFS seamless).\n"
+        "3. If daily/ensemble CSVs for **today** exist in `static/data/`, they are reused (cache).\n"
+        "4. Runs AquaCrop across ensemble members and saves two PNGs under `static/png/`.\n"
+        "5. Returns the relative URLs of the two images.\n\n"
+        "Set `force=true` to recompute even if cached files exist."
+    ),
+    tags=["AquaCrop", "Ensemble", "Water Profile"],
+    response_description="JSON with URLs to two PNG images.",
+    responses={
+        200: {
+            "description": "Images generated or retrieved from cache.",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "image_url_1": "/static/png/water_profile_quantiles_Ussana_20250819.png",
+                        "image_url_2": "/static/png/model_outputs_Ussana_20250819.png"
+                    }
+                }
+            }
+        },
+        400: {"description": "Unsupported location."},
+        503: {"description": "Upstream data error or model failure."}
+    },
+    include_in_schema=True,
+)
+def water_profile(
+    location: str = fastapi.Query("Ussana", description="Target site: 'Ussana' or 'Benatzu'."),
+    force: bool = fastapi.Query(False, description="Recompute outputs even if cached data exist for today.")
+) -> dict:
+    """
+    Returns two image URLs (PNG) saved under static/png/.
+    """
+    try:
+        image_path_1, image_path_2 = run_ensemble_and_generate_plot(location, force=force)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    except Exception as e:
+        return JSONResponse({"error": f"Water profile generation failed: {e}"}, status_code=503)
+
+    return {"image_url_1": f"/{image_path_1}", "image_url_2": f"/{image_path_2}"}
