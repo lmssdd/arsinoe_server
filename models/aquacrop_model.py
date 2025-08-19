@@ -337,7 +337,7 @@ def plot_wprof_out(models, name, save_path, forecast_days=30):
     plt.savefig(save_path)
     plt.close()
 
-def plot_ensemble_quantiles(models, name, save_path, drop_days=30):
+def plot_ensemble_quantiles(models, name, save_path, drop_days=0):
     """
     Generates a figure with 16 subplots, showing the median and quantile areas
     (10, 25, 75, 90 percentiles) for various model output variables.
@@ -383,41 +383,42 @@ def plot_ensemble_quantiles(models, name, save_path, drop_days=30):
         outputs = models[m]._outputs.crop_growth
         fluxes = models[m]._outputs.water_flux
         storage = models[m]._outputs.water_storage
+        last_day=(outputs.gdd_cum[:]!=0).sum()
         #print(outputs.columns)
-        ensemble_data['gdd'].append(outputs.gdd[-drop_days:-1])
-        ensemble_data['gdd_cum'].append(outputs.gdd_cum[-drop_days:-1])
-        ensemble_data['z_root'].append(outputs.z_root[:-1])
-        ensemble_data['canopy_cover'].append(outputs.canopy_cover_ns[-drop_days:-1]-outputs.canopy_cover[-drop_days:-1])
+        ensemble_data['gdd'].append(outputs.gdd[-drop_days:last_day])
+        ensemble_data['gdd_cum'].append(outputs.gdd_cum[-drop_days:last_day])
+        ensemble_data['z_root'].append(outputs.z_root[:last_day])
+        ensemble_data['canopy_cover'].append(outputs.canopy_cover_ns[-drop_days:last_day]-outputs.canopy_cover[-drop_days:last_day])
         #ensemble_data['canopy_cover'].append(outputs.canopy_cover[-drop_days:-1])
         #ensemble_data['canopy_cover_ns'].append(outputs.canopy_cover_ns[-drop_days:-1])
-        ensemble_data['biomass'].append(outputs.biomass_ns[-drop_days:-1]-outputs.biomass[-drop_days:-1])
+        ensemble_data['biomass'].append(outputs.biomass_ns[-drop_days:last_day]-outputs.biomass[-drop_days:last_day])
         #ensemble_data['biomass'].append(outputs.biomass[-drop_days:-1])
         #ensemble_data['biomass_ns'].append(outputs.biomass_ns[-drop_days:-1])
-        ensemble_data['harvest_index'].append(outputs.harvest_index_adj[-drop_days:-1]-outputs.harvest_index[-drop_days:-1])
+        ensemble_data['harvest_index'].append(outputs.harvest_index_adj[-drop_days:last_day]-outputs.harvest_index[-drop_days:last_day])
         #ensemble_data['harvest_index'].append(outputs.harvest_index[-drop_days:-1])
         #ensemble_data['harvest_index_adj'].append(outputs.harvest_index_adj[-drop_days:-1])
         
         #ensemble_data['yield_'].append(outputs.yield_[-drop_days:-1])
         
-        ensemble_data['yield_'].append(outputs.DryYield[-drop_days:-1])
-        ensemble_data['Wr'].append(fluxes.Wr[-drop_days:-1])
-        ensemble_data['Infl'].append(fluxes.Infl[-drop_days:-1])
-        ensemble_data['Runoff'].append(fluxes.Runoff[-drop_days:-1])
+        ensemble_data['yield_'].append(outputs.DryYield[-drop_days:last_day])
+        ensemble_data['Wr'].append(fluxes.Wr[-drop_days:last_day])
+        ensemble_data['Infl'].append(fluxes.Infl[-drop_days:last_day])
+        ensemble_data['Runoff'].append(fluxes.Runoff[-drop_days:last_day])
         #ensemble_data['DeepPerc'].append(fluxes.DeepPerc[-drop_days:-1])
-        ensemble_data['Es'].append(fluxes.Es[-drop_days:-1])
-        ensemble_data['EsPot'].append(fluxes.EsPot[-drop_days:-1])
-        ensemble_data['Tr'].append(fluxes.Tr[-drop_days:-1])
-        ensemble_data['TrPot'].append(fluxes.TrPot[-drop_days:-1])
-        ensemble_data['th1'].append(storage.th1[-drop_days:-1])
-        ensemble_data['Infl_cum'].append(fluxes.Infl.cumsum()[:-1])
-        ensemble_data['Es_cum'].append(fluxes.Es.cumsum()[:-1])
+        ensemble_data['Es'].append(fluxes.Es[-drop_days:last_day])
+        ensemble_data['EsPot'].append(fluxes.EsPot[-drop_days:last_day])
+        ensemble_data['Tr'].append(fluxes.Tr[-drop_days:last_day])
+        ensemble_data['TrPot'].append(fluxes.TrPot[-drop_days:last_day])
+        ensemble_data['th1'].append(storage.th1[-drop_days:last_day])
+        ensemble_data['Infl_cum'].append(fluxes.Infl.cumsum()[:last_day])
+        ensemble_data['Es_cum'].append(fluxes.Es.cumsum()[:last_day])
         if(m==0):
-            axs[15].plot(models[m]._outputs.water_flux.Infl.cumsum()[:-1],c='b',label='Pcum')
-            axs[15].plot(models[m]._outputs.water_flux.Es.cumsum()[:-1],c='g',label='Ecum')
+            axs[15].plot(models[m]._outputs.water_flux.Infl.cumsum()[:last_day],c='b',label='Pcum')
+            axs[15].plot(models[m]._outputs.water_flux.Es.cumsum()[:last_day],c='g',label='Ecum')
             axs[15].grid(True)
         else:
-            axs[15].plot(models[m]._outputs.water_flux.Infl.cumsum()[:-1],c='b')
-            axs[15].plot(models[m]._outputs.water_flux.Es.cumsum()[:-1],c='g')
+            axs[15].plot(models[m]._outputs.water_flux.Infl.cumsum()[:last_day],c='b')
+            axs[15].plot(models[m]._outputs.water_flux.Es.cumsum()[:last_day],c='g')
         max_plu=200
         if m==0:
             axs[15].plot((13,13),(0,max_plu),label='Emergence')
