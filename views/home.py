@@ -1,3 +1,4 @@
+from typing import Annotated
 import fastapi
 from starlette.requests import Request
 from starlette.templating import Jinja2Templates
@@ -900,7 +901,8 @@ async def precipitation_plot(
     description=(
         "Uploads a weather input file and runs the **AquaCrop** model for the selected site "
         "(**Ussana** or **Benatzu**), then returns a **Plotly figure JSON** and a **download URL** "
-        "for detailed results.\n\n"
+        "for detailed results.\n"
+        "Optional irr (0–100) controls support irrigation via AquaCrop’s IrrigationManagement (SMT). When irr=0, irrigation is disabled.\n\n"
         "**Workflow:**\n"
         "1. Accepts a multipart form with a file (`file`) and a site selection (`site`).\n"
         "2. Saves the uploaded file under `uploads/`.\n"
@@ -939,7 +941,8 @@ async def precipitation_plot(
 async def process_file(
     request: Request,
     file: fastapi.UploadFile = fastapi.File(..., description="Weather input file for AquaCrop."),
-    site: str = fastapi.Form(..., description="Target site: 'Ussana' or 'Benatzu'.")
+    site: str = fastapi.Form(..., description="Target site: 'Ussana' or 'Benatzu'."),
+    irr: Annotated[int, fastapi.Form(ge=0, le=100, description="Support irrigation (%) 0–100.")] = 0,
 ) -> dict:
     """
     Returns a Plotly figure JSON and a download URL for the results JSON.
@@ -955,9 +958,9 @@ async def process_file(
     # Run simulation
     try:
         if site == "Ussana":
-            model = aquacrop_run_ussana(file_path)
+            model = aquacrop_run_ussana(file_path, irr)
         elif site == "Benatzu":
-            model = aquacrop_run_benatzu(file_path)
+            model = aquacrop_run_benatzu(file_path, irr)
         else:
             return JSONResponse({"error": "Invalid site. Use 'Ussana' or 'Benatzu'."}, status_code=400)
     except Exception as e:
@@ -1109,14 +1112,15 @@ async def upload_file(file: fastapi.UploadFile = fastapi.File(..., description="
     include_in_schema=True,
 )
 def water_profile(
-    location: str = fastapi.Query("Ussana", description="Target site: 'Ussana' or 'Benatzu'."),
-    force: bool = fastapi.Query(False, description="Recompute outputs even if cached data exist for today.")
+    location: Annotated[str, fastapi.Query(description="Target site: 'Ussana' or 'Benatzu'.")] = "Ussana",
+    irr: Annotated[int, fastapi.Query(ge=0, le=100, description="Support irrigation (%) 0–100.")] = 0,
+    force: Annotated[bool, fastapi.Query(description="Recompute even if cached.")] = False,
 ) -> dict:
     """
     Returns two image URLs (PNG) saved under static/png/.
     """
     try:
-        image_path_1, image_path_2 = run_ensemble_and_generate_plot(location, force=force)
+        image_path_1, image_path_2 = run_ensemble_and_generate_plot(location, force=force, irr=irr)
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
     except Exception as e:

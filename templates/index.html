@@ -44,15 +44,25 @@
     <div id="WaterProfile" style="text-align: center;">
       <div style="margin-bottom: 1rem;">
         <label class="radio">
-          <input type="radio" name="location" value="Ussana" checked>
-          Ussana
+          <input type="radio" name="location" value="Ussana" checked> Ussana
         </label>
         <label class="radio">
-          <input type="radio" name="location" value="Benatzu">
-          Benatzu
+          <input type="radio" name="location" value="Benatzu"> Benatzu
         </label>
       </div>
-    
+
+      <!-- Support irrigation control (slider + exact number) -->
+      <div class="field" style="max-width: 520px; margin: 0 auto 1rem;">
+        <label class="label" for="irr-range">Support irrigation (%)</label>
+        <div class="control" style="display: flex; gap: .75rem; align-items: center;">
+          <input id="irr-range" class="slider is-fullwidth"
+                type="range" min="0" max="100" step="1" value="0" style="flex:1;">
+          <input id="irr-number" class="input" type="number"
+                min="0" max="100" step="1" value="0" style="width: 6rem;">
+        </div>
+        <p class="help">0 = rainfed; 100 = maximum support.</p>
+      </div>
+
       <!-- 🔁 SPINNER PRIMA -->
       <div id="water-loading" style="display: none;">
         <div class="weather-animation">
@@ -60,7 +70,7 @@
           <p>Running AquaCrop ensemble simulation...</p>
         </div>
       </div>
-    
+
       <!-- 👇 IMMAGINI DOPO -->
       <div id="WaterProfileImage">
         <img id="img1" alt="Water Profile Chart 1" style="margin-bottom: 1rem;">
@@ -90,17 +100,22 @@
       color: white;
       font-size: 1.5rem;
     }
-
-    #weather-icon {
-      font-size: 4rem;
-    }
+    #weather-icon { font-size: 4rem; }
   </style>
 
   <script>
+    // --- Safe no-ops if the global loader isn't present ---
+    if (typeof window.showGlobalLoading !== "function") window.showGlobalLoading = function(){};
+    if (typeof window.hideGlobalLoading !== "function") window.hideGlobalLoading = function(){};
+
     document.addEventListener("DOMContentLoaded", () => {
       const tabs = document.querySelectorAll(".tabs li");
       const tabContents = document.querySelectorAll(".tab-content");
       const tabContainer = document.querySelector(".tabs");
+
+      // IRR controls (slider + number)
+      const irrRange  = document.getElementById("irr-range");
+      const irrNumber = document.getElementById("irr-number");
 
       let waterProfileLoaded = false;
 
@@ -108,18 +123,11 @@
       tabContainer.style.visibility = "hidden";
       tabContents.forEach(tc => tc.style.visibility = "hidden");
 
-      // Load all tabs with spinner on initial load
+      // Load all tabs; don't let one failure block the rest
       showGlobalLoading("Loading dashboard...");
       loadAllTabs()
-        .then(() => {
-          showContent();
-          hideGlobalLoading();
-        })
-        .catch(error => {
-          hideGlobalLoading();
-          console.error("Error loading homepage:", error);
-          alert("Something went wrong while loading the dashboard.");
-        });
+        .then(() => { showContent(); })
+        .finally(() => { hideGlobalLoading(); });
 
       // Tab switching
       tabs.forEach((tab, index) => {
@@ -131,11 +139,10 @@
           tabContents[index].classList.remove("is-hidden");
 
           if (index === 2) {
-            Plotly.relayout("Precipitation", { autosize: true });
+            // History tab: ensure Plotly resizes
+            if (window.Plotly) Plotly.relayout("Precipitation", { autosize: true });
           } else if (index === 3 && !waterProfileLoaded) {
-            loadWaterProfile().then(() => {
-              waterProfileLoaded = true;
-            });
+            loadWaterProfile(getSelectedLocation(), getIrr()).then(() => { waterProfileLoaded = true; });
           }
         });
       });
@@ -143,9 +150,34 @@
       // Location radio buttons for water profile
       document.querySelectorAll('input[name="location"]').forEach(radio => {
         radio.addEventListener('change', (event) => {
-          loadWaterProfile(event.target.value);
+          loadWaterProfile(event.target.value, getIrr());
         });
       });
+
+      // ---- IRR helpers + events ----
+      const clamp = v => Math.max(0, Math.min(100, Number(v) || 0));
+      function setIrr(v) {
+        const val = clamp(v);
+        if (irrRange)  irrRange.value  = String(val);
+        if (irrNumber) irrNumber.value = String(val);
+      }
+      function getIrr() {
+        return clamp(irrNumber ? irrNumber.value : 0);
+      }
+
+      if (irrRange && irrNumber) {
+        // keep slider <-> number in sync
+        irrRange.addEventListener('input',  () => setIrr(irrRange.value));
+        irrNumber.addEventListener('input', () => setIrr(irrNumber.value));
+
+        // actually fetch only on committed change
+        irrRange.addEventListener('change',  () => loadWaterProfile(getSelectedLocation(), getIrr()));
+        irrNumber.addEventListener('change', () => loadWaterProfile(getSelectedLocation(), getIrr()));
+      }
+
+      function getSelectedLocation() {
+        return document.querySelector('input[name="location"]:checked')?.value || 'Ussana';
+      }
     });
 
     function showContent() {
@@ -155,57 +187,83 @@
       tabContents.forEach(tc => tc.style.visibility = "visible");
     }
 
+    // Load all panels independently
     function loadAllTabs() {
-      return Promise.all([
+      return Promise.allSettled([
         loadForecastPlot(),
         loadNDVIPlot(),
         loadPrecPlot(),
-        // loadWaterProfile()
-      ]);
+        // Water profile loads when that tab is first opened
+      ]).then(results => {
+        results.forEach((r, i) => {
+          if (r.status !== "fulfilled") {
+            console.warn("Panel failed:", i, r.reason);
+          }
+        });
+      });
     }
 
     function loadForecastPlot() {
       return fetch("/gfs_forecast/39.415/9.1")
-        .then(response => response.json())
+        .then(r => r.json())
         .then(plotlyData => {
+          if (!window.Plotly) throw new Error("Plotly not loaded");
           Plotly.newPlot("Forecast", plotlyData.data, plotlyData.layout);
+        })
+        .catch(err => {
+          console.error("Forecast error:", err);
+          document.getElementById("Forecast").innerHTML =
+            '<p class="has-text-danger">Failed to load forecast.</p>';
         });
     }
 
+    // Use an iframe so Folium's scripts execute
     function loadNDVIPlot() {
-      return fetch("/ndvi_map")
-        .then(response => response.text())
-        .then(html => {
-          document.getElementById("NDVI").innerHTML = html;
-        });
+      try {
+        const target = document.getElementById("NDVI");
+        target.innerHTML =
+          '<iframe src="/ndvi_map" width="100%" height="650" style="border:0;"></iframe>';
+        return Promise.resolve();
+      } catch (err) {
+        console.error("NDVI error:", err);
+        document.getElementById("NDVI").innerHTML =
+          '<p class="has-text-danger">Failed to load NDVI map.</p>';
+        return Promise.resolve(); // keep dashboard flowing
+      }
     }
 
     function loadPrecPlot() {
       return fetch("/precipitation_plot/39.415/9.1")
-        .then(response => response.json())
+        .then(r => r.json())
         .then(plotlyData => {
+          if (!window.Plotly) throw new Error("Plotly not loaded");
           Plotly.newPlot("Precipitation", plotlyData.data, plotlyData.layout);
+        })
+        .catch(err => {
+          console.error("Precipitation/NDVI error:", err);
+          document.getElementById("Precipitation").innerHTML =
+            '<p class="has-text-warning">Precipitation/NDVI history unavailable.</p>';
         });
     }
 
-    function loadWaterProfile(location = "Ussana") {
+    function loadWaterProfile(location = "Ussana", irr = 0) {
       showGlobalLoading("Running AquaCrop ensemble simulation...");
-      return fetch(`/water_profile?location=${location}`)
-        .then(response => response.json())
-        .then(data => {
-          document.getElementById("img1").src = data.image_url_1;
-          document.getElementById("img2").src = data.image_url_2;
+      const url = `/water_profile?location=${encodeURIComponent(location)}&irr=${encodeURIComponent(irr)}`;
+      return fetch(url)
+        .then(r => {
+          if (!r.ok) throw new Error(`Server error ${r.status}`);
+          return r.json();
         })
-        .catch(error => {
-          console.error("Error loading water profile:", error);
+        .then(data => {
+          document.getElementById("img1").src = data.image_url_1 || "";
+          document.getElementById("img2").src = data.image_url_2 || "";
+        })
+        .catch(err => {
+          console.error("Water profile error:", err);
           alert("Failed to load water profile.");
         })
-        .finally(() => {
-          hideGlobalLoading();
-        });
+        .finally(() => hideGlobalLoading());
     }
-
   </script>
-
 
 {% endblock %}

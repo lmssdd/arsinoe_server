@@ -30,6 +30,18 @@
       </div>
     </div>
 
+    <!-- Support irrigation (slider + number) -->
+    <div class="field">
+      <label class="label" for="irr-range">Support irrigation (%)</label>
+      <div class="control" style="display:flex; gap:.75rem; align-items:center;">
+        <input id="irr-range" class="slider is-fullwidth"
+              type="range" min="0" max="100" step="1" value="0" style="flex:1;">
+        <input id="irr-number" class="input" type="number"
+              name="irr" min="0" max="100" step="1" value="0" style="width:6rem;">
+      </div>
+      <p class="help">0 = rainfed; 100 = maximum support.</p>
+    </div>
+
     <div class="control">
       <button class="button is-primary" type="submit">Submit</button>
     </div>
@@ -39,41 +51,41 @@
   <div id="downloadLink" class="mt-3"></div>
 
   <script>
+    // sync slider with number
+    const irrRange  = document.getElementById('irr-range');
+    const irrNumber = document.getElementById('irr-number');
+    const clamp = v => Math.max(0, Math.min(100, Number(v) || 0));
+    function setIrr(v){ const val = clamp(v); irrRange.value = val; irrNumber.value = val; }
+    irrRange.addEventListener('input',  () => setIrr(irrRange.value));
+    irrNumber.addEventListener('input', () => setIrr(irrNumber.value));
+
     document.getElementById('uploadForm').addEventListener('submit', async (event) => {
       event.preventDefault();
-
       showGlobalLoading("Running AquaCrop simulation...");
 
-      const fileInput = document.getElementById('fileInput');
-      const formData = new FormData();
-      formData.append('file', fileInput.files[0]);
-
-      const site = document.querySelector('input[name="site"]:checked').value;
-      formData.append('site', site);
-
       try {
-        const response = await fetch('/simulation', {
-          method: 'POST',
-          body: formData,
-        });
+        const fileInput = document.getElementById('fileInput');
+        const site = document.querySelector('input[name="site"]:checked')?.value || 'Ussana';
+        const irr = clamp(irrNumber.value);
 
-        if (!response.ok) throw new Error(`Server error: ${response.status}`);
+        const fd = new FormData();
+        fd.append('file', fileInput.files[0]);
+        fd.append('site', site);
+        fd.append('irr', String(irr));  // <-- exact value sent
 
-        const result = await response.json();
+        const res = await fetch('/simulation', { method: 'POST', body: fd });
+        if (!res.ok) throw new Error(`Server error: ${res.status}`);
+        const result = await res.json();
 
-        // Render the plot
         Plotly.newPlot('plot', result.plot.data, result.plot.layout);
-
-        // Add download link
-        const downloadDiv = document.getElementById('downloadLink');
-        downloadDiv.innerHTML = `<a href="${result.download_url}" download="results.json" class="button is-info">Download Results as JSON</a>`;
-
-      } catch (error) {
-        console.error('Error:', error);
-        alert('An error occurred. Please try again.');
+        document.getElementById('downloadLink').innerHTML =
+          `<a href="${result.download_url}" download="results.json" class="button is-info">Download Results as JSON</a>`;
+      } catch (e) {
+        console.error(e); alert(e.message || 'Failed.');
       } finally {
         hideGlobalLoading();
       }
     });
   </script>
+
 {% endblock %}

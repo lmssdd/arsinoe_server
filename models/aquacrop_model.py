@@ -1,4 +1,4 @@
-from aquacrop import AquaCropModel, Soil, Crop, InitialWaterContent
+from aquacrop import AquaCropModel, Soil, Crop, InitialWaterContent, IrrigationManagement
 from aquacrop.utils import prepare_weather, get_filepath
 
 from datetime import datetime, timedelta
@@ -44,7 +44,7 @@ def aquacrop_run(fname=aquacrop_fname):
 
   return model
 
-def aquacrop_run_benatzu(fname=aquacrop_fname):
+def aquacrop_run_benatzu(fname=aquacrop_fname, irr: int=0):
 
   weather_data = prepare_weather(fname)
   
@@ -56,23 +56,35 @@ def aquacrop_run_benatzu(fname=aquacrop_fname):
   wheat = Crop('Wheat', planting_date='12/15')
 
   #wheat.CC0 = 0.3
+  
 
   InitWC = InitialWaterContent( value=['FC'] )
-
-  # combine into aquacrop model and specify start and end simulation date
-  model = AquaCropModel( sim_start_time=f'{1950}/12/15',
-                         sim_end_time=f'{2023}/07/30',
-                         weather_df=weather_data,
-                         soil=soil_benatzu,  # sandy_clay_loam,
-                         crop=wheat,
-                         initial_water_content=InitWC )
+  irr_mngt = IrrigationManagement(irrigation_method=1,SMT=[irr]*4) # specify irrigation management
+    
+  if irr == 0:
+    # combine into aquacrop model and specify start and end simulation date
+    model = AquaCropModel(sim_start_time=f'{1950}/12/15',
+                          sim_end_time=f'{2023}/07/30',
+                          weather_df=weather_data,
+                          soil=soil_benatzu,  # sandy_clay_loam,
+                          crop=wheat,
+                          initial_water_content=InitWC)
+  else:
+    # combine into aquacrop model and specify start and end simulation date
+    model = AquaCropModel(sim_start_time=f'{1950}/12/15',
+                          sim_end_time=f'{2023}/07/30',
+                          weather_df=weather_data,
+                          soil=soil_benatzu,  # sandy_clay_loam,
+                          crop=wheat,
+                          initial_water_content=InitWC,
+                          irrigation_management=irr_mngt)
 
   # run model till termination
   model.run_model(till_termination=True)
 
   return model
 
-def aquacrop_run_ussana(fname=aquacrop_fname):
+def aquacrop_run_ussana(fname=aquacrop_fname, irr: int=0):
 
   weather_data = prepare_weather(fname)
 
@@ -86,14 +98,25 @@ def aquacrop_run_ussana(fname=aquacrop_fname):
   #wheat.CC0 = 0.3
 
   InitWC = InitialWaterContent( value=['FC'] )
-
-  # combine into aquacrop model and specify start and end simulation date
-  model = AquaCropModel( sim_start_time=f'{1950}/12/15',
-                         sim_end_time=f'{2023}/07/30',
-                         weather_df=weather_data,
-                         soil=soil_ussana,  # sandy_clay_loam,
-                         crop=wheat,
-                         initial_water_content=InitWC )
+  irr_mngt = IrrigationManagement(irrigation_method=1,SMT=[irr]*4) # specify irrigation management
+  
+  if irr == 0:
+    # combine into aquacrop model and specify start and end simulation date
+    model = AquaCropModel(sim_start_time=f'{1950}/12/15',
+                          sim_end_time=f'{2023}/07/30',
+                          weather_df=weather_data,
+                          soil=soil_ussana,  # sandy_clay_loam,
+                          crop=wheat,
+                          initial_water_content=InitWC)
+  else:
+    # combine into aquacrop model and specify start and end simulation date
+    model = AquaCropModel(sim_start_time=f'{1950}/12/15',
+                          sim_end_time=f'{2023}/07/30',
+                          weather_df=weather_data,
+                          soil=soil_ussana,  # sandy_clay_loam,
+                          crop=wheat,
+                          initial_water_content=InitWC,
+                          irrigation_management=irr_mngt)
 
   # run model till termination
   model.run_model(till_termination=True)
@@ -102,7 +125,7 @@ def aquacrop_run_ussana(fname=aquacrop_fname):
 
 
 
-def run_ensemble_and_generate_plot(location: str, force: bool = False) -> tuple[str, str]:
+def run_ensemble_and_generate_plot(location: str, force: bool = False, irr: int=0) -> tuple[str, str]:
     data_dir = 'static/data'
 
     data_semina = '20241203'
@@ -230,7 +253,9 @@ def run_ensemble_and_generate_plot(location: str, force: bool = False) -> tuple[
         InitWC = InitialWaterContent(wc_type='Pct',value=[100*min(p_pre/58,1)])
     else:
         raise ValueError("Unsupported location")
-    
+
+    irr_mngt = IrrigationManagement(irrigation_method=1,SMT=[irr]*4) # specify irrigation management
+
     models={}
     for m in range(31):
         # define ussana_weather_data
@@ -242,12 +267,21 @@ def run_ensemble_and_generate_plot(location: str, force: bool = False) -> tuple[
         weather_data['ReferenceET']=ensemble_dataframes[f'member_{m:02d}'].et0_fao_evapotranspiration
         weather_data['Date']=weather_data.index
         #print(m,weather_data.mean())
-        mu = AquaCropModel(sim_start_time=datetime.strftime(semina, '%Y/%m/%d'),
-                    sim_end_time=datetime.strftime(raccolta, '%Y/%m/%d'),
-                    weather_df=weather_data,
-                    soil=soil,
-                    crop=local_wheat,
-                    initial_water_content=InitWC)
+        if irr==0:
+            mu = AquaCropModel(sim_start_time=datetime.strftime(semina, '%Y/%m/%d'),
+                        sim_end_time=datetime.strftime(raccolta, '%Y/%m/%d'),
+                        weather_df=weather_data,
+                        soil=soil,
+                        crop=local_wheat,
+                        initial_water_content=InitWC)
+        else:
+            mu = AquaCropModel(sim_start_time=datetime.strftime(semina, '%Y/%m/%d'),
+                        sim_end_time=datetime.strftime(raccolta, '%Y/%m/%d'),
+                        weather_df=weather_data,
+                        soil=soil,
+                        crop=local_wheat,
+                        initial_water_content=InitWC,
+                        irrigation_management=irr_mngt)
         mu.run_model(till_termination=True)  
         models[m]=mu
 
