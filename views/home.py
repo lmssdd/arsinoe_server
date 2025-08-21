@@ -813,10 +813,8 @@ async def precipitation_plot(
         bbox_coords = (9.0747, 39.4022, 9.1186, 39.4361)
         time_interval = (start_date, today)
 
-        #client_id = os.getenv("SH_CLIENT_ID")
-        #client_secret = os.getenv("SH_CLIENT_SECRET")
-        client_id = "sh-031078ea-3866-4001-8550-5e8e942d7c78"
-        client_secret = "sT1q2RdKNfMwAGtlA2mebNLW23CxcocX"
+        client_id = os.getenv("SH_CLIENT_ID")
+        client_secret = os.getenv("SH_CLIENT_SECRET")
         if not client_id or not client_secret:
             raise RuntimeError("Sentinel Hub credentials missing (set SH_CLIENT_ID and SH_CLIENT_SECRET).")
 
