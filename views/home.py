@@ -926,6 +926,7 @@ async def precipitation_plot(
                             ],
                             "layout": {"title": "Ussana production"}
                         },
+                        "stats": "Min: XXX, Max: XXX, Mean:XXX, Std:XXX",
                         "download_url": "/download/example_results.json"
                     }
                 }
@@ -975,13 +976,13 @@ async def process_file(
 
     # Build figure
     fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=df['Harvest Date (YYYY/MM/DD)'],
-        y=df['Yield potential (tonne/ha)'],
-        mode="lines+markers",
-        name="Yield potential",
-        showlegend=False
-    ))
+    #fig.add_trace(go.Scatter(
+    #    x=df['Harvest Date (YYYY/MM/DD)'],
+    #    y=df['Yield potential (tonne/ha)'],
+    #    mode="lines+markers",
+    #    name="Yield potential",
+    #    showlegend=False
+    #))
     fig.add_trace(go.Scatter(
         x=df['Harvest Date (YYYY/MM/DD)'],
         y=df['Fresh yield (tonne/ha)'],
@@ -998,8 +999,10 @@ async def process_file(
         height=500
     )
 
+    fy = df['Fresh yield (tonne/ha)']
     return {
         "plot": json.loads(json.dumps(fig, cls=PlotlyJSONEncoder)),
+        "stats": f"Min:{fy.min()}, Max:{fy.max()}, Mean:{fy.mean()}, Std:{fy.std()} ",
         "download_url": f"/download/{json_filename}"
     }
 

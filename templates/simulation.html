@@ -48,6 +48,7 @@
   </form>
 
   <div id="plot" class="mt-5"></div>
+  <div id="stats" class="mt-3"></div>
   <div id="downloadLink" class="mt-3"></div>
 
   <script>
@@ -78,6 +79,7 @@
         const result = await res.json();
 
         Plotly.newPlot('plot', result.plot.data, result.plot.layout);
+        document.getElementById('stats').innerHTML = $result.stats
         document.getElementById('downloadLink').innerHTML =
           `<a href="${result.download_url}" download="results.json" class="button is-info">Download Results as JSON</a>`;
       } catch (e) {

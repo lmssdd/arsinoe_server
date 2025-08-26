@@ -19,8 +19,8 @@ aquacrop_fname = "static/files/CMCC_CM2_VHR4.txt"
 def aquacrop_run(fname=aquacrop_fname):
 
   weather_data = prepare_weather(fname)
-  year_start = weather_data.index.year.min()
-  year_stop = weather_data.index.year.max()
+  year_start = weather_data.Date.dt.year.min()
+  year_stop = weather_data.Date.dt.year.max()
 
   #sandy_clay_loam = Soil(soil_type='SandyClayLoam')
   soil_ussana=Soil('custom') # Ussana
@@ -49,8 +49,8 @@ def aquacrop_run(fname=aquacrop_fname):
 def aquacrop_run_benatzu(fname=aquacrop_fname, irr: int=0):
 
   weather_data = prepare_weather(fname)
-  year_start = weather_data.index.year.min()
-  year_stop = weather_data.index.year.max()
+  year_start = weather_data.Date.dt.year.min()
+  year_stop = weather_data.Date.dt.year.max()
   
   #sandy_clay_loam = Soil(soil_type='SandyClayLoam')
   soil_benatzu=Soil('custom') # Benatzu
@@ -91,8 +91,8 @@ def aquacrop_run_benatzu(fname=aquacrop_fname, irr: int=0):
 def aquacrop_run_ussana(fname=aquacrop_fname, irr: int=0):
 
   weather_data = prepare_weather(fname)
-  year_start = weather_data.index.year.min()
-  year_stop = weather_data.index.year.max()
+  year_start = weather_data.Date.dt.year.min()
+  year_stop = weather_data.Date.dt.year.max()
 
   #sandy_clay_loam = Soil(soil_type='SandyClayLoam')
   soil_ussana=Soil('custom') # Ussana
