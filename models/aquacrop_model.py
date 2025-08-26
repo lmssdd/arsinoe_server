@@ -19,6 +19,8 @@ aquacrop_fname = "static/files/CMCC_CM2_VHR4.txt"
 def aquacrop_run(fname=aquacrop_fname):
 
   weather_data = prepare_weather(fname)
+  year_start = weather_data.index.year.min()
+  year_stop = weather_data.index.year.max()
 
   #sandy_clay_loam = Soil(soil_type='SandyClayLoam')
   soil_ussana=Soil('custom') # Ussana
@@ -32,8 +34,8 @@ def aquacrop_run(fname=aquacrop_fname):
   InitWC = InitialWaterContent( value=['FC'] )
 
   # combine into aquacrop model and specify start and end simulation date
-  model = AquaCropModel( sim_start_time=f'{1950}/12/01',
-                         sim_end_time=f'{2050}/07/30',
+  model = AquaCropModel( sim_start_time=f'{year_start}/12/01',
+                         sim_end_time=f'{year_stop}/07/30',
                          weather_df=weather_data,
                          soil=soil_ussana,  # sandy_clay_loam,
                          crop=wheat,
@@ -47,6 +49,8 @@ def aquacrop_run(fname=aquacrop_fname):
 def aquacrop_run_benatzu(fname=aquacrop_fname, irr: int=0):
 
   weather_data = prepare_weather(fname)
+  year_start = weather_data.index.year.min()
+  year_stop = weather_data.index.year.max()
   
   #sandy_clay_loam = Soil(soil_type='SandyClayLoam')
   soil_benatzu=Soil('custom') # Benatzu
@@ -63,16 +67,16 @@ def aquacrop_run_benatzu(fname=aquacrop_fname, irr: int=0):
     
   if irr == 0:
     # combine into aquacrop model and specify start and end simulation date
-    model = AquaCropModel(sim_start_time=f'{1950}/12/15',
-                          sim_end_time=f'{2023}/07/30',
+    model = AquaCropModel(sim_start_time=f'{year_start}/12/15',
+                          sim_end_time=f'{year_stop}/07/30',
                           weather_df=weather_data,
                           soil=soil_benatzu,  # sandy_clay_loam,
                           crop=wheat,
                           initial_water_content=InitWC)
   else:
     # combine into aquacrop model and specify start and end simulation date
-    model = AquaCropModel(sim_start_time=f'{1950}/12/15',
-                          sim_end_time=f'{2023}/07/30',
+    model = AquaCropModel(sim_start_time=f'{year_start}/12/15',
+                          sim_end_time=f'{year_stop}/07/30',
                           weather_df=weather_data,
                           soil=soil_benatzu,  # sandy_clay_loam,
                           crop=wheat,
@@ -87,6 +91,8 @@ def aquacrop_run_benatzu(fname=aquacrop_fname, irr: int=0):
 def aquacrop_run_ussana(fname=aquacrop_fname, irr: int=0):
 
   weather_data = prepare_weather(fname)
+  year_start = weather_data.index.year.min()
+  year_stop = weather_data.index.year.max()
 
   #sandy_clay_loam = Soil(soil_type='SandyClayLoam')
   soil_ussana=Soil('custom') # Ussana
@@ -102,16 +108,16 @@ def aquacrop_run_ussana(fname=aquacrop_fname, irr: int=0):
   
   if irr == 0:
     # combine into aquacrop model and specify start and end simulation date
-    model = AquaCropModel(sim_start_time=f'{1950}/12/15',
-                          sim_end_time=f'{2023}/07/30',
+    model = AquaCropModel(sim_start_time=f'{year_start}/12/15',
+                          sim_end_time=f'{year_stop}/07/30',
                           weather_df=weather_data,
                           soil=soil_ussana,  # sandy_clay_loam,
                           crop=wheat,
                           initial_water_content=InitWC)
   else:
     # combine into aquacrop model and specify start and end simulation date
-    model = AquaCropModel(sim_start_time=f'{1950}/12/15',
-                          sim_end_time=f'{2023}/07/30',
+    model = AquaCropModel(sim_start_time=f'{year_start}/12/15',
+                          sim_end_time=f'{year_stop}/07/30',
                           weather_df=weather_data,
                           soil=soil_ussana,  # sandy_clay_loam,
                           crop=wheat,
