@@ -1002,7 +1002,7 @@ async def process_file(
     fy = df['Fresh yield (tonne/ha)']
     return {
         "plot": json.loads(json.dumps(fig, cls=PlotlyJSONEncoder)),
-        "stats": f"Min:{fy.min()}, Max:{fy.max()}, Mean:{fy.mean()}, Std:{fy.std()} ",
+        "stats": f"Min:{fy.min().round(2)}, Max:{fy.max().round(2)}, Mean:{fy.mean().round(2)}, Std:{fy.std().round(2)} ",
         "download_url": f"/download/{json_filename}"
     }
 
