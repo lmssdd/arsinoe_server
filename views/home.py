@@ -471,7 +471,7 @@ def ndvi_map() -> HTMLResponse:
     # --- Metadata box ---
     keys = ["AREA_NAME", "SENSOR_TYPE", "DESCRIPTION", "ACQUISITION_DATETIME", "PROCESSING_VERSION"]
     metadata_html = """
-    <div class="box" style="margin-top: 1.5rem;">
+    <div class="box" style="position:absolute; bottom:20px; left:20px; z-index:9999; background:white; padding:10px; border:1px solid #ccc; width:320px; max-height:45%; overflow:auto;">
       <h4 class="title is-5">NDVI Metadata</h4>
       <div class="content">
         <dl>
